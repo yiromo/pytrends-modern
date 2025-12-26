@@ -428,7 +428,7 @@ class TrendReq:
 
         # Add isPartial column
         if "isPartial" in df:
-            df = df.fillna(False)
+            df["isPartial"] = df["isPartial"].where(df["isPartial"].notna(), False)
             is_partial_df = df["isPartial"].apply(
                 lambda x: pd.Series(str(x).replace("[", "").replace("]", "").split(","))
             )
@@ -716,11 +716,6 @@ class TrendReq:
 
         Returns:
             DataFrame of real-time trending searches with entity names and titles
-
-        Example:
-            >>> pytrends = TrendReq()
-            >>> df = pytrends.realtime_trending_searches(pn='US', count=50)
-            >>> print(df.head())
         """
         # Validate count
         ri_value = min(count, 300)

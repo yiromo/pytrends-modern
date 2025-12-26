@@ -8,6 +8,7 @@ __license__ = "MIT"
 
 from pytrends_modern.request import TrendReq
 from pytrends_modern.rss import TrendsRSS
+from pytrends_modern.scraper import TrendsScraper
 from pytrends_modern.exceptions import (
     TooManyRequestsError,
     ResponseError,
@@ -19,6 +20,7 @@ from pytrends_modern.exceptions import (
 __all__ = [
     "TrendReq",
     "TrendsRSS",
+    "TrendsScraper",
     "TooManyRequestsError",
     "ResponseError",
     "InvalidParameterError",

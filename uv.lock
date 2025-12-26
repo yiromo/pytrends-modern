@@ -10,6 +10,12 @@ resolution-markers = [
     "python_full_version < '3.9'",
 ]
 
+[manifest]
+members = [
+    "pytrends-modern",
+    "test-trendspyg",
+]
+
 [[package]]
 name = "attrs"
 version = "25.3.0"
@@ -2526,8 +2532,8 @@ wheels = [
 ]
 
 [[package]]
-name = "pytrends-plus"
-version = "1.0.0"
+name = "pytrends-modern"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "lxml" },
@@ -2595,7 +2601,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pytest-vcr", marker = "extra == 'dev'", specifier = ">=1.0.2" },
-    { name = "pytrends-plus", extras = ["selenium", "cli", "export"], marker = "extra == 'all'" },
+    { name = "pytrends-modern", extras = ["selenium", "cli", "export"], marker = "extra == 'all'" },
     { name = "requests", specifier = ">=2.28.0" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
@@ -2864,6 +2870,17 @@ wheels = [
 ]
 
 [[package]]
+name = "test-trendspyg"
+version = "0.1.0"
+source = { virtual = "test_space" }
+dependencies = [
+    { name = "trendspyg" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "trendspyg", specifier = ">=0.3.0" }]
+
+[[package]]
 name = "tomli"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2910,6 +2927,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7e/46/cc36c679f09f27ded940281c38607716c86cf8ba4a518d524e349c8b4874/tomli-2.3.0-cp314-cp314t-win32.whl", hash = "sha256:a1f7f282fe248311650081faafa5f4732bdbfef5d45fe3f2e702fbc6f2d496e0", size = 107563, upload-time = "2025-10-08T22:01:44.233Z" },
     { url = "https://files.pythonhosted.org/packages/84/ff/426ca8683cf7b753614480484f6437f568fd2fda2edbdf57a2d3d8b27a0b/tomli-2.3.0-cp314-cp314t-win_amd64.whl", hash = "sha256:70a251f8d4ba2d9ac2542eecf008b3c8a9fc5c3f9f02c56a9d7952612be2fdba", size = 119756, upload-time = "2025-10-08T22:01:45.234Z" },
     { url = "https://files.pythonhosted.org/packages/77/b8/0135fadc89e73be292b473cb820b4f5a08197779206b33191e801feeae40/tomli-2.3.0-py3-none-any.whl", hash = "sha256:e95b1af3c5b07d9e643909b5abbec77cd9f1217e6d0bca72b0234736b9fb1f1b", size = 14408, upload-time = "2025-10-08T22:01:46.04Z" },
+]
+
+[[package]]
+name = "trendspyg"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests", version = "2.32.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "requests", version = "2.32.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.9'" },
+    { name = "selenium", version = "4.27.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
+    { name = "selenium", version = "4.36.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.9.*'" },
+    { name = "selenium", version = "4.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dc/a0/8a6962c195dcb6ceb6522bf936e33921483cf81e79d943c1023e12429044/trendspyg-0.3.0.tar.gz", hash = "sha256:9a33ac5d7fa511ec9f96cd998439c1cdf8299e570db539d88cb63222a143ac93", size = 37167, upload-time = "2025-12-17T00:56:29.527Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/02/0bcd777f43fce8595dd665bc6b55b6c3d94cf8af6593a5cf8561d737eead/trendspyg-0.3.0-py3-none-any.whl", hash = "sha256:40ad6430c6e8cbd1486f08fbf2b4ed3c42ea5fad9267fe8012c81158bec793a5", size = 28824, upload-time = "2025-12-17T00:56:28.155Z" },
 ]
 
 [[package]]

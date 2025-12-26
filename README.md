@@ -342,6 +342,44 @@ This project builds upon and combines features from:
 - CLI interface
 - Multiple export formats
 
+## 📌 Important Notes
+
+### Google API Changes
+
+Google has deprecated several trending search API endpoints. **pytrends-modern provides two working alternatives:**
+
+#### Option 1: Fast RSS Feed (Recommended for most use cases)
+```python
+from pytrends_modern import TrendsRSS
+
+rss = TrendsRSS()
+trends = rss.get_trends(geo='US')  # ~0.7s, returns 10 trends with images/articles
+```
+**Pros:** Lightning fast, includes rich media, no browser needed  
+**Cons:** Limited to 10 trends, no filtering options
+
+#### Option 2: Selenium Web Scraper (For complete data)
+```python
+from pytrends_modern import TrendsScraper
+
+scraper = TrendsScraper(headless=True)
+df = scraper.trending_searches(geo='US', hours=24)  # ~15s, returns 400+ trends
+scraper.close()
+```
+**Pros:** Complete data (400+ trends), supports categories/filters  
+**Cons:** Slower, requires Chrome browser
+
+### Working Features
+✅ All core API methods work perfectly:
+- `interest_over_time()` - Historical search trends
+- `interest_by_region()` - Geographic distribution  
+- `related_queries()` / `related_topics()` - Related searches
+- `suggestions()` - Keyword suggestions
+- And more!
+
+✅ RSS feeds for 125+ countries  
+✅ Selenium scraper for comprehensive trending data
+
 ## ⚠️ Disclaimer
 
 This is an unofficial library and is not affiliated with or endorsed by Google. Use responsibly and in accordance with Google's Terms of Service.

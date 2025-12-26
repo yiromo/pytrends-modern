@@ -36,7 +36,7 @@ class TrendsRSS:
         ...     print(f"{trend['title']}: {trend['traffic']}")
     """
 
-    RSS_URL_TEMPLATE = "https://trends.google.com/trends/trendingsearches/daily/rss?geo={geo}"
+    RSS_URL_TEMPLATE = "https://trends.google.com/trending/rss?geo={geo}"
 
     def __init__(self, timeout: int = 10):
         """
@@ -123,7 +123,7 @@ class TrendsRSS:
                     trend_data["pub_date_datetime"] = None
 
             # Traffic volume (from ht:approx_traffic namespace)
-            traffic_elem = item.find(".//{http://www.google.com/trends/hottrends}approx_traffic")
+            traffic_elem = item.find(".//{https://trends.google.com/trending/rss}approx_traffic")
             if traffic_elem is not None and traffic_elem.text:
                 # Remove '+' and ',' from traffic string
                 traffic_str = traffic_elem.text.replace("+", "").replace(",", "")
@@ -136,12 +136,12 @@ class TrendsRSS:
 
             # Image
             if include_images:
-                picture_elem = item.find(".//{http://www.google.com/trends/hottrends}picture")
+                picture_elem = item.find(".//{https://trends.google.com/trending/rss}picture")
                 trend_data["picture"] = picture_elem.text if picture_elem is not None else None
 
             # News articles
             if include_articles:
-                news_items = item.findall(".//{http://www.google.com/trends/hottrends}news_item")
+                news_items = item.findall(".//{https://trends.google.com/trending/rss}news_item")
                 articles = []
 
                 for news_item in news_items[:max_articles_per_trend]:
@@ -149,25 +149,25 @@ class TrendsRSS:
 
                     # Article title
                     title_elem = news_item.find(
-                        ".//{http://www.google.com/trends/hottrends}news_item_title"
+                        ".//{https://trends.google.com/trending/rss}news_item_title"
                     )
                     article["title"] = title_elem.text if title_elem is not None else None
 
                     # Article URL
                     url_elem = news_item.find(
-                        ".//{http://www.google.com/trends/hottrends}news_item_url"
+                        ".//{https://trends.google.com/trending/rss}news_item_url"
                     )
                     article["url"] = url_elem.text if url_elem is not None else None
 
                     # Article snippet
                     snippet_elem = news_item.find(
-                        ".//{http://www.google.com/trends/hottrends}news_item_snippet"
+                        ".//{https://trends.google.com/trending/rss}news_item_snippet"
                     )
                     article["snippet"] = snippet_elem.text if snippet_elem is not None else None
 
                     # Article source
                     source_elem = news_item.find(
-                        ".//{http://www.google.com/trends/hottrends}news_item_source"
+                        ".//{https://trends.google.com/trending/rss}news_item_source"
                     )
                     article["source"] = source_elem.text if source_elem is not None else None
 

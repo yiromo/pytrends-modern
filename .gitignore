@@ -3,7 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 .ruff_cache/
+trendspyg/
 
+test_space/
 # C extensions
 *.so
 

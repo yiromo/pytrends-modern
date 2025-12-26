@@ -5,6 +5,38 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-12-26
+
+### Added
+- 🚀 **Selenium-based scraper for deprecated endpoints** - `TrendsScraper` class
+  - `trending_searches()` - Download trending searches via Selenium (replaces broken API)
+  - `today_searches()` - Convenience method for 24-hour trends
+  - `realtime_trending_searches()` - Convenience method for real-time trends (4-hour default)
+  - Supports categories, time periods (4h, 24h, 48h, 168h), active-only filtering
+  - Returns pandas DataFrame with 6 columns: Trends, Search volume, Started, Ended, Trend breakdown, Explore link
+  - Headless Chrome automation with automatic driver management
+  - Thanks to [trendspyg](https://github.com/flack0x/trendspyg) for the proven Selenium approach
+- Added `selenium>=4.0.0` and `webdriver-manager>=3.8.0` as dependencies
+
+### Fixed
+- 🎉 **RSS endpoint is working again!** Updated RSS implementation with new Google Trends URL
+  - Changed RSS_URL_TEMPLATE from old daily RSS to new trending RSS endpoint
+  - Updated XML namespace from `http://www.google.com/trends/hottrends` to `https://trends.google.com/trending/rss`
+  - Fixed all XML element parsing to use correct namespace
+  - `TrendsRSS.get_trends()` now returns data in ~0.7 seconds!
+  - Old URL: `https://trends.google.com/trends/trendingsearches/daily/rss` (404)
+  - New URL: `https://trends.google.com/trending/rss` (✅ working)
+  - Thanks to [trendspyg](https://github.com/flack0x/trendspyg) for the updated URL pattern
+- Fixed pandas FutureWarning for fillna downcasting by using `.where()` instead of `.fillna()`
+- Removed Selenium usage warning - users can choose their preferred method
+- Fixed browser cleanup errors during Python shutdown in `TrendsScraper`
+
+### Changed
+- Google's trending API endpoints are deprecated, but alternatives now available:
+  - **Fast option**: `TrendsRSS.get_trends()` - RSS feed, 0.7s response, 10 trends
+  - **Full option**: `TrendsScraper.trending_searches()` - Selenium scraping, ~15s, 400+ trends
+- Export button detection updated to use "Export" instead of "Download" (Google UI change)
+
 ## [0.1.1] - 2025-12-26
 
 ### Fixed
