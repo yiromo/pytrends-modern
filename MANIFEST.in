@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include pytrends_plus *.py py.typed
+recursive-include examples *.py
+recursive-include tests *.py
