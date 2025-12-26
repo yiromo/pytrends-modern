@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pytrends-modern"
-version = "0.1.0"
+version = "0.1.1"
 description = "Modern Google Trends API - Combining the best of pytrends, with RSS feeds, Selenium scraping, and enhanced features"
 readme = "README.md"
 requires-python = ">=3.8"

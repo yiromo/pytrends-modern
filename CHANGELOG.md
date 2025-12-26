@@ -5,18 +5,13 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2025-12-26
+## [0.1.1] - 2025-12-26
 
-### Security
-- **FIXED:** XML External Entity (XXE) vulnerability in RSS feed parser
-  - Replaced `xml.etree.ElementTree` with `defusedxml` for secure XML parsing
-  - Added `defusedxml>=0.7.1` to core dependencies
-- Completed security audit with pip-audit and bandit
+### Fixed
+- Renamed package directory from `pytrends_plus` to `pytrends_modern` for consistency
+- Updated all internal imports and references
 
-### Changed
-- Updated package name from pytrends-plus to pytrends-modern for PyPI publication
-
-## [1.0.0] - 2025-12-26
+## [0.1.0] - 2025-12-26
 
 ### Added
 - Initial release of pytrends-modern
