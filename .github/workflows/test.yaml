@@ -33,7 +33,7 @@ jobs:
     
     - name: Run tests
       run: |
-        pytest tests/ -v --cov=pytrends_plus --cov-report=xml --cov-report=term
+        pytest tests/ -v --cov=pytrends_modern --cov-report=xml --cov-report=term
     
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
@@ -63,13 +63,13 @@ jobs:
         pip install -e ".[all]"
     
     - name: Run ruff
-      run: ruff check pytrends_plus/ --output-format=github
+      run: ruff check pytrends_modern/ --output-format=github
       continue-on-error: true
     
     - name: Check formatting with black
-      run: black --check pytrends_plus/
+      run: black --check pytrends_modern/
       continue-on-error: true
     
     - name: Type check with mypy
-      run: mypy pytrends_plus/ --ignore-missing-imports
+      run: mypy pytrends_modern/ --ignore-missing-imports
       continue-on-error: true

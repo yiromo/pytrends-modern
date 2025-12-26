@@ -40,7 +40,7 @@ pip install pytrends-modern[all]
 ### Basic Usage
 
 ```python
-from pytrends_plus import TrendReq
+from pytrends_modern import TrendReq
 
 # Initialize
 pytrends = TrendReq(hl='en-US', tz=360)
@@ -68,7 +68,7 @@ print(related['Python']['top'])
 ### RSS Feed (Fast Real-Time Data)
 
 ```python
-from pytrends_plus import TrendsRSS
+from pytrends_modern import TrendsRSS
 
 # Get trending searches with rich media
 rss = TrendsRSS()
@@ -256,7 +256,7 @@ pytrends = TrendReq(
 
 ```python
 import asyncio
-from pytrends_plus import AsyncTrendReq
+from pytrends_modern import AsyncTrendReq
 
 async def get_trends():
     pytrends = AsyncTrendReq(hl='en-US')
@@ -270,8 +270,8 @@ df = asyncio.run(get_trends())
 ### Rate Limit Handling
 
 ```python
-from pytrends_plus import TrendReq
-from pytrends_plus.exceptions import TooManyRequestsError
+from pytrends_modern import TrendReq
+from pytrends_modern.exceptions import TooManyRequestsError
 
 pytrends = TrendReq(retries=5, backoff_factor=0.5)
 
@@ -285,7 +285,7 @@ except TooManyRequestsError:
 ### Batch Processing
 
 ```python
-from pytrends_plus import TrendReq
+from pytrends_modern import TrendReq
 import time
 
 keywords = ['Python', 'JavaScript', 'Rust', 'Go', 'Java']
@@ -305,7 +305,7 @@ for kw in keywords:
 pytest
 
 # With coverage
-pytest --cov=pytrends_plus
+pytest --cov=pytrends_modern
 
 # Specific test
 pytest tests/test_request.py::test_interest_over_time

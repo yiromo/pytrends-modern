@@ -57,14 +57,14 @@ Feature suggestions are welcome! Please open an issue with:
 6. **Run tests**
    ```bash
    pytest
-   pytest --cov=pytrends_plus  # With coverage
+   pytest --cov=pytrends_modern  # With coverage
    ```
 
 7. **Run linting**
    ```bash
-   black pytrends_plus/
-   ruff check pytrends_plus/
-   mypy pytrends_plus/
+   black pytrends_modern/
+   ruff check pytrends_modern/
+   mypy pytrends_modern/
    ```
 
 8. **Commit your changes**
@@ -177,7 +177,7 @@ def test_my_feature():
 
 Example:
 ```python
-from pytrends_plus.exceptions import InvalidParameterError
+from pytrends_modern.exceptions import InvalidParameterError
 
 def validate_input(value: str) -> str:
     if not value:
@@ -191,7 +191,7 @@ def validate_input(value: str) -> str:
 
 ```
 pytrends-modern/
-├── pytrends_plus/          # Main package
+├── pytrends_modern/          # Main package
 │   ├── __init__.py         # Package exports
 │   ├── request.py          # Core API client
 │   ├── rss.py              # RSS feed support

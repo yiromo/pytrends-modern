@@ -30,7 +30,7 @@ python examples/advanced_usage.py
 ### 1. Interest Over Time
 Get historical search interest for keywords:
 ```python
-from pytrends_plus import TrendReq
+from pytrends_modern import TrendReq
 
 pytrends = TrendReq()
 pytrends.build_payload(['Python', 'JavaScript'], timeframe='today 12-m')
@@ -49,7 +49,7 @@ print(df.head())
 ### 3. RSS Feed (Fast!)
 Get real-time trending searches in 0.2 seconds:
 ```python
-from pytrends_plus import TrendsRSS
+from pytrends_modern import TrendsRSS
 
 rss = TrendsRSS()
 trends = rss.get_trends(geo='US')
@@ -71,7 +71,7 @@ pytrends = TrendReq(
 ### 2. Custom Date Ranges
 ```python
 from datetime import date, timedelta
-from pytrends_plus.utils import convert_dates_to_timeframe
+from pytrends_modern.utils import convert_dates_to_timeframe
 
 end_date = date.today()
 start_date = end_date - timedelta(days=180)
@@ -94,7 +94,7 @@ for kw in keywords:
 
 ### 4. Trend Analysis
 ```python
-from pytrends_plus.utils import calculate_trend_momentum, detect_trend_spikes
+from pytrends_modern.utils import calculate_trend_momentum, detect_trend_spikes
 
 pytrends.build_payload(['ChatGPT'], timeframe='today 12-m')
 df = pytrends.interest_over_time()
@@ -108,7 +108,7 @@ spikes = detect_trend_spikes(df, 'ChatGPT', threshold=2.0)
 
 ### 5. Export to Multiple Formats
 ```python
-from pytrends_plus.utils import export_to_multiple_formats
+from pytrends_modern.utils import export_to_multiple_formats
 
 paths = export_to_multiple_formats(
     df,
