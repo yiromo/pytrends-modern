@@ -5,6 +5,20 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-01-14
+
+### Added
+- 🚀 **Async/Await Support** - New `AsyncTrendReq` class for async operations
+  - Full async/await support using `async with AsyncTrendReq()` context manager
+  - Uses `camoufox.async_api.AsyncCamoufox` for async browser operations
+  - All 4 API methods now available as async: `await pytrends.interest_over_time()`, etc.
+  - Same persistent profile system as sync version
+  - Same network interception and response caching
+  - Reuses parsing logic from sync `TrendReq` class
+
+### Fixed
+- Fixed async response.body() handling in network interception (must be awaited)
+
 ## [0.2.0] - 2026-01-12
 
 ### Added
