@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Same persistent profile system as sync version
   - Same network interception and response caching
   - Reuses parsing logic from sync `TrendReq` class
+- 🐳 **Docker Support** - Enhanced headless mode options for containers
+  - `headless="virtual"` option for Docker/containerized environments
+  - Uses Xvfb virtual display to prevent display errors in containers
+  - `headless=False` for local development (show browser)
+  - `headless=True` for standard headless mode
+  - New example: `examples/example_docker_usage.py`
 
 ### Fixed
 - Fixed async response.body() handling in network interception (must be awaited)

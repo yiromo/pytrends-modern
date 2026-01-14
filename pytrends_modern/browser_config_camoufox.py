@@ -1,6 +1,6 @@
 """Browser configuration for Camoufox automation"""
 
-from typing import Optional
+from typing import Optional, Union
 import os as os_module
 
 
@@ -18,7 +18,9 @@ class BrowserConfig:
     
     Args:
         headless: Run browser in headless mode (default: False)
-                 Set to 'virtual' on Linux to use Xvfb
+                 - False: Show browser window (for local development)
+                 - True: Standard headless mode (for servers with display)
+                 - 'virtual': Use Xvfb virtual display (for Docker containers)
         proxy_server: Proxy server URL (e.g., 'http://proxy.com:8080')
         proxy_username: Proxy username (for authenticated proxies)
         proxy_password: Proxy password (for authenticated proxies)
@@ -47,7 +49,7 @@ class BrowserConfig:
     
     def __init__(
         self,
-        headless: bool = False,
+        headless: Union[bool, str] = False,
         proxy_server: Optional[str] = None,
         proxy_username: Optional[str] = None,
         proxy_password: Optional[str] = None,

@@ -125,11 +125,16 @@ RUN mkdir -p /root/.config && \
     cd /root/.config && \
     tar -xzf /tmp/profile.tar.gz
 
-# 3. Use headless mode in container
-config = BrowserConfig(headless=True)
+# 3. Use headless="virtual" in container
+config = BrowserConfig(headless="virtual")  # Use Xvfb for Docker
 ```
 
-See `Dockerfile.example` for complete Docker setup.
+**Headless Options:**
+- `headless=False` - Show browser window (local development)
+- `headless=True` - Standard headless (servers with display)
+- `headless="virtual"` - Xvfb virtual display (Docker containers)
+
+See `Dockerfile.example` and `examples/example_docker_usage.py` for complete Docker setup.
 
 ⚠️ **Security**: Profile contains Google session - keep secure, don't commit to git!
 
