@@ -56,6 +56,20 @@ class AsyncTrendReq:
         """Async context manager exit"""
         await self._close_browser()
         
+    def _browserforge_to_camoufox(self, fingerprint) -> Dict:
+        """Convert BrowserForge fingerprint to Camoufox config"""
+        # Reuse the sync version's implementation
+        from pytrends_modern.request import TrendReq
+        return TrendReq._browserforge_to_camoufox(self, fingerprint)
+    
+    async def _add_request_delay(self) -> None:
+        """Add random delay between requests to avoid rate limiting (async)"""
+        if hasattr(self.browser_config, 'min_delay') and hasattr(self.browser_config, 'max_delay'):
+            import asyncio
+            import random
+            delay = random.uniform(self.browser_config.min_delay, self.browser_config.max_delay)
+            await asyncio.sleep(delay)
+    
     async def _init_camoufox(self) -> None:
         """Initialize Camoufox browser with persistent context (async)"""
         try:
@@ -98,15 +112,19 @@ class AsyncTrendReq:
         
         # Initialize AsyncCamoufox with persistent context
         try:
+            # Note: Camoufox automatically generates BrowserForge fingerprints
+            # based on the 'os' parameter. No need to manually pass fingerprints.
+            
             # AsyncCamoufox() returns a context manager
             camoufox_manager = AsyncCamoufox(
-                persistent_context=True,
-                user_data_dir=user_data_dir,
+                persistent_context=self.browser_config.persistent_context,
+                user_data_dir=user_data_dir if self.browser_config.persistent_context else None,
                 headless=self.browser_config.headless,
                 humanize=self.browser_config.humanize if hasattr(self.browser_config, 'humanize') else True,
                 os=self.browser_config.os if hasattr(self.browser_config, 'os') else 'linux',
                 geoip=self.browser_config.geoip if hasattr(self.browser_config, 'geoip') else True,
-                proxy=proxy_config
+                proxy=proxy_config,
+                config=self.browser_config.custom_config if self.browser_config.custom_config else None
             )
             
             # Enter the context manager to get the browser context
@@ -188,6 +206,9 @@ class AsyncTrendReq:
         """
         if not self.browser_page:
             raise exceptions.BrowserError("Browser not initialized")
+        
+        # Add random delay before request (anti-rate-limiting)
+        await self._add_request_delay()
         
         # Clear cache
         self.browser_responses_cache.clear()

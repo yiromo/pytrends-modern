@@ -170,6 +170,44 @@ class TrendReq:
         """Get a random user agent"""
         return random.choice(USER_AGENTS) if self.rotate_user_agent else USER_AGENTS[0]
     
+    def _browserforge_to_camoufox(self, fingerprint) -> Dict:
+        """Convert BrowserForge fingerprint to Camoufox config"""
+        config = {}
+        
+        # Navigator properties
+        if hasattr(fingerprint, 'navigator'):
+            nav = fingerprint.navigator
+            if hasattr(nav, 'userAgent'):
+                config['navigator.userAgent'] = nav.userAgent
+            if hasattr(nav, 'language'):
+                config['navigator.language'] = nav.language
+            if hasattr(nav, 'hardwareConcurrency'):
+                config['navigator.hardwareConcurrency'] = nav.hardwareConcurrency
+            if hasattr(nav, 'maxTouchPoints'):
+                config['navigator.maxTouchPoints'] = nav.maxTouchPoints
+        
+        # Screen properties
+        if hasattr(fingerprint, 'screen'):
+            scr = fingerprint.screen
+            if hasattr(scr, 'width'):
+                config['screen.width'] = scr.width
+            if hasattr(scr, 'height'):
+                config['screen.height'] = scr.height
+            if hasattr(scr, 'availWidth'):
+                config['screen.availWidth'] = scr.availWidth
+            if hasattr(scr, 'availHeight'):
+                config['screen.availHeight'] = scr.availHeight
+        
+        return config
+    
+    def _add_request_delay(self) -> None:
+        """Add random delay between requests to avoid rate limiting"""
+        if hasattr(self.browser_config, 'min_delay') and hasattr(self.browser_config, 'max_delay'):
+            import time
+            import random
+            delay = random.uniform(self.browser_config.min_delay, self.browser_config.max_delay)
+            time.sleep(delay)
+    
     def _init_camoufox(self) -> None:
         """Initialize Camoufox browser with persistent context"""
         try:
@@ -212,15 +250,19 @@ class TrendReq:
         
         # Initialize Camoufox with persistent context
         try:
+            # Note: Camoufox automatically generates BrowserForge fingerprints
+            # based on the 'os' parameter. No need to manually pass fingerprints.
+            
             # Camoufox() returns a context manager, we need to use __enter__() to get the context
             camoufox_manager = Camoufox(
-                persistent_context=True,
-                user_data_dir=user_data_dir,
+                persistent_context=self.browser_config.persistent_context,
+                user_data_dir=user_data_dir if self.browser_config.persistent_context else None,
                 headless=self.browser_config.headless,
                 humanize=self.browser_config.humanize if hasattr(self.browser_config, 'humanize') else True,
                 os=self.browser_config.os if hasattr(self.browser_config, 'os') else 'linux',
                 geoip=self.browser_config.geoip if hasattr(self.browser_config, 'geoip') else True,
-                proxy=proxy_config
+                proxy=proxy_config,
+                config=self.browser_config.custom_config if self.browser_config.custom_config else None
             )
             
             # Enter the context manager to get the browser context
@@ -302,6 +344,9 @@ class TrendReq:
         """
         if not self.browser_page:
             raise exceptions.BrowserError("Browser not initialized")
+        
+        # Add random delay before request (anti-rate-limiting)
+        self._add_request_delay()
         
         # Clear cache
         self.browser_responses_cache.clear()

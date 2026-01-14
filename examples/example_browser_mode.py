@@ -35,15 +35,15 @@ from pytrends_modern import TrendReq, BrowserConfig
 config = BrowserConfig(
     headless=False,  # Set to True for headless mode
     humanize=True,   # Human-like cursor movements
-    os='linux',      # or 'windows', 'macos'
-    geoip=True       # Auto-detect location from IP
+    os='windows',      # or 'windows', 'macos'
+    geoip=False       # Auto-detect location from IP
 )
 
 # Initialize with browser mode
 pytrends = TrendReq(browser_config=config)
 
 # Test with a keyword
-keyword = "Artificial Intelligence"
+keyword = "Brainrot"
 print(f"\n🔍 Fetching data for: {keyword}")
 print("⏳ Browser will open briefly...")
 

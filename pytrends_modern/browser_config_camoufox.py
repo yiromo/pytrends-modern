@@ -1,6 +1,6 @@
 """Browser configuration for Camoufox automation"""
 
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any
 import os as os_module
 
 
@@ -29,6 +29,12 @@ class BrowserConfig:
         humanize: Enable human-like cursor movement (default: True)
         os: Operating system for fingerprint ('windows', 'macos', 'linux')
         geoip: Auto-detect geolocation from proxy IP (default: True if proxy)
+        rotate_fingerprint: Generate random fingerprint for each session (default: True)
+                          Set to False to use persistent fingerprint
+        min_delay: Minimum delay between requests in seconds (default: 2)
+        max_delay: Maximum delay between requests in seconds (default: 5)
+        persistent_context: Keep browser profile between sessions (default: True)
+                          Set to False to use fresh profile each time (helps avoid 429)
     
     Example:
         >>> from pytrends_modern import TrendReq, BrowserConfig
@@ -57,6 +63,11 @@ class BrowserConfig:
         humanize: bool = True,
         os: str = 'linux',
         geoip: bool = True,
+        rotate_fingerprint: bool = True,
+        min_delay: float = 2.0,
+        max_delay: float = 5.0,
+        persistent_context: bool = True,
+        custom_config: Optional[Dict[str, Any]] = None,
     ):
         self.headless = headless
         self.proxy_server = proxy_server
@@ -66,4 +77,9 @@ class BrowserConfig:
         self.humanize = humanize
         self.os = os
         self.geoip = geoip if proxy_server else False
+        self.rotate_fingerprint = rotate_fingerprint
+        self.min_delay = min_delay
+        self.max_delay = max_delay
+        self.persistent_context = persistent_context
+        self.custom_config = custom_config or {}
 

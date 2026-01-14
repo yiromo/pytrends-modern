@@ -89,6 +89,36 @@ df = pytrends.interest_over_time()
 print(df.head())
 ```
 
+**Avoiding 429 Rate Limits:**
+
+If you're getting 429 errors even with browser mode, use these anti-rate-limit features:
+
+```python
+import random
+from pytrends_modern import TrendReq, BrowserConfig
+
+# Add delays + rotate OS fingerprint
+os_choice = random.choice(['windows', 'macos', 'linux'])
+config = BrowserConfig(
+    headless=False,
+    min_delay=3.0,             # Min delay between requests (seconds)
+    max_delay=7.0,             # Max delay between requests
+    persistent_context=True,    # Keep Google login
+    os=os_choice,              # Rotate OS fingerprint
+    humanize=True
+)
+
+pytrends = TrendReq(browser_config=config)
+# Delays are automatically added before each request
+```
+
+**Anti-Rate-Limit Options:**
+- `min_delay` / `max_delay` - Random delay between requests (default: 2-5s)
+- `os` - Rotate between 'windows', 'macos', 'linux' for different fingerprints
+- `persistent_context=False` - Fresh profile each time (no cookies)
+- `proxy_server` - Use proxy to rotate IPs
+- `humanize=True` - Human-like cursor movements (enabled by default)
+
 **Browser Mode Limitations:**
 - ⚠️ Only 1 keyword at a time (no comparisons)
 - ⚠️ Only 'today 1-m' timeframe
