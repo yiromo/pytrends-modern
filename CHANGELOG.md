@@ -5,6 +5,18 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-01-14
+
+### Added
+- 🐳 **Docker Support** - Enhanced headless mode for containers
+  - `headless="virtual"` option for Docker/containerized environments
+  - Uses Xvfb virtual display to prevent display errors in containers
+  - New example: `examples/example_docker_usage.py`
+
+### Changed
+- `BrowserConfig.headless` now accepts `Union[bool, str]` (was `bool`)
+- Updated README with Docker headless options documentation
+
 ## [0.2.1] - 2026-01-14
 
 ### Added
