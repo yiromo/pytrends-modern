@@ -27,6 +27,9 @@ pytrends-modern is a **next-generation** Google Trends library that combines:
 # Basic installation
 pip install pytrends-modern
 
+# With browser mode (Camoufox for bypassing rate limits)
+pip install pytrends-modern[browser]
+
 # With Selenium support (for advanced scraping)
 pip install pytrends-modern[selenium]
 
@@ -64,6 +67,71 @@ print(region_df.head())
 related = pytrends.related_queries()
 print(related['Python']['top'])
 ```
+
+### 🦊 Browser Mode (Camoufox) - Bypass Rate Limits
+
+**NEW!** Use Camoufox with advanced fingerprinting to bypass Google's rate limits by using your Google account:
+
+```python
+from pytrends_modern import TrendReq, BrowserConfig
+from pytrends_modern.camoufox_setup import setup_profile
+
+# First-time setup: Configure Google account login
+setup_profile()  # Opens browser - log in to Google once
+
+# Use browser mode (persistent login, no rate limits!)
+config = BrowserConfig(headless=False)
+pytrends = TrendReq(browser_config=config)
+
+# Works like normal API
+pytrends.kw_list = ['Python']
+df = pytrends.interest_over_time()
+print(df.head())
+```
+
+**Browser Mode Limitations:**
+- ⚠️ Only 1 keyword at a time (no comparisons)
+- ⚠️ Only 'today 1-m' timeframe
+- ⚠️ Only WORLDWIDE region
+- ✅ No rate limits (uses your Google account)
+- ✅ Perfect anti-detection with Camoufox fingerprinting
+
+**Setup from command line:**
+```bash
+# Check profile status
+python -m pytrends_modern.camoufox_setup status
+
+# Run setup (opens browser for Google login)
+python -m pytrends_modern.camoufox_setup
+
+# Export profile for Docker/other machines
+python -m pytrends_modern.camoufox_setup export camoufox-profile.tar.gz
+
+# Import profile on another machine
+python -m pytrends_modern.camoufox_setup import camoufox-profile.tar.gz
+```
+
+**Docker Usage:**
+
+Yes! You can export your profile and use it in Docker containers:
+
+```bash
+# 1. Export profile locally
+python -m pytrends_modern.camoufox_setup export profile.tar.gz
+
+# 2. Use in Dockerfile
+COPY profile.tar.gz /tmp/
+RUN mkdir -p /root/.config && \
+    cd /root/.config && \
+    tar -xzf /tmp/profile.tar.gz
+
+# 3. Use headless mode in container
+config = BrowserConfig(headless=True)
+```
+
+See `Dockerfile.example` for complete Docker setup.
+
+⚠️ **Security**: Profile contains Google session - keep secure, don't commit to git!
 
 ### RSS Feed (Fast Real-Time Data)
 

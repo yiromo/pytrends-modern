@@ -15,6 +15,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
 from pytrends_modern import exceptions
+from pytrends_modern.browser_config_camoufox import BrowserConfig
 from pytrends_modern.config import (
     BASE_TRENDS_URL,
     CATEGORIES_URL,
@@ -72,6 +73,7 @@ class TrendReq:
         backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
         requests_args: Optional[Dict[str, Any]] = None,
         rotate_user_agent: bool = True,
+        browser_config: Optional[BrowserConfig] = None,
     ):
         """
         Initialize Google Trends API client
@@ -86,7 +88,36 @@ class TrendReq:
             backoff_factor: Backoff factor for exponential backoff
             requests_args: Additional arguments to pass to requests
             rotate_user_agent: Whether to rotate user agents
+            browser_config: DrissionPage browser configuration (experimental)
+                           
+                           ⚠️ LIMITATIONS when using browser_config:
+                           - Only 1 keyword supported (no comparison)
+                           - Only 'today 1-m' timeframe supported
+                           - Only WORLDWIDE geo supported (no geo filtering)
+                           - Requires Chrome/Chromium browser installed
         """
+        # Browser mode initialization
+        self.browser_config = browser_config
+        self.browser = None
+        self.browser_context = None
+        self.browser_page = None
+        self.browser_mode = browser_config is not None
+        self.browser_responses_cache = {}  # Cache for captured API responses
+        
+        if self.browser_mode:
+            import warnings
+            warnings.warn(
+                "⚠️  Camoufox browser mode is EXPERIMENTAL and has limitations:\n"
+                "   - Only 1 keyword supported (no keyword comparison)\n"
+                "   - Only 'today 1-m' timeframe supported\n"
+                "   - Only WORLDWIDE geo supported\n"
+                "   - Requires Google account login (first run)\n"
+                "   - Login session is saved for future runs",
+                UserWarning,
+                stacklevel=2
+            )
+            self._init_camoufox()
+        
         # Rate limit message from Google
         self.google_rl = "You have reached your quota limit. Please try again later."
 
@@ -112,8 +143,11 @@ class TrendReq:
                 # Store dict format in requests_args
                 self.requests_args["proxies"] = proxies
 
-        # Get initial cookies
-        self.cookies = self._get_google_cookie()
+        # Get initial cookies (skip in browser mode)
+        if not self.browser_mode:
+            self.cookies = self._get_google_cookie()
+        else:
+            self.cookies = {}
 
         # Initialize widget payloads
         self.token_payload: Dict[str, Any] = {}
@@ -127,10 +161,330 @@ class TrendReq:
         if self.rotate_user_agent:
             self.headers["User-Agent"] = random.choice(USER_AGENTS)
         self.headers.update(self.requests_args.pop("headers", {}))
+    
+    def __del__(self):
+        """Cleanup browser on object deletion"""
+        self._close_browser()
 
     def _get_user_agent(self) -> str:
         """Get a random user agent"""
         return random.choice(USER_AGENTS) if self.rotate_user_agent else USER_AGENTS[0]
+    
+    def _init_camoufox(self) -> None:
+        """Initialize Camoufox browser with persistent context"""
+        try:
+            from camoufox.sync_api import Camoufox
+        except ImportError:
+            raise ImportError(
+                "Camoufox is required for browser mode. "
+                "Install with: pip install pytrends-modern[browser]"
+            )
+        
+        # Prepare browser options
+        import os
+        user_data_dir = os.path.expanduser(
+            self.browser_config.user_data_dir or "~/.config/camoufox-pytrends-profile"
+        )
+        
+        # Check if profile is configured (has Google login)
+        from pytrends_modern.camoufox_setup import is_profile_configured
+        if not is_profile_configured(user_data_dir):
+            raise exceptions.BrowserError(
+                f"Camoufox profile not configured at: {user_data_dir}\n"
+                "You must set up your Google account login first:\n\n"
+                "  from pytrends_modern.camoufox_setup import setup_profile\n"
+                "  setup_profile()\n\n"
+                "Or run from command line:\n"
+                "  python -m pytrends_modern.camoufox_setup\n\n"
+                "This will open a browser for you to log in to Google."
+            )
+        
+        # Proxy configuration (if provided)
+        proxy_config = None
+        if self.browser_config.proxy_server:
+            proxy_config = {
+                "server": self.browser_config.proxy_server,
+            }
+            if self.browser_config.proxy_username:
+                proxy_config["username"] = self.browser_config.proxy_username
+            if self.browser_config.proxy_password:
+                proxy_config["password"] = self.browser_config.proxy_password
+        
+        # Initialize Camoufox with persistent context
+        try:
+            # Camoufox() returns a context manager, we need to use __enter__() to get the context
+            camoufox_manager = Camoufox(
+                persistent_context=True,
+                user_data_dir=user_data_dir,
+                headless=self.browser_config.headless,
+                humanize=self.browser_config.humanize if hasattr(self.browser_config, 'humanize') else True,
+                os=self.browser_config.os if hasattr(self.browser_config, 'os') else 'linux',
+                geoip=self.browser_config.geoip if hasattr(self.browser_config, 'geoip') else True,
+                proxy=proxy_config
+            )
+            
+            # Enter the context manager to get the browser context
+            self.browser = camoufox_manager  # Store manager for cleanup
+            self.browser_context = camoufox_manager.__enter__()
+            
+            # Use existing page if available (avoid opening 2 tabs)
+            if self.browser_context.pages:
+                self.browser_page = self.browser_context.pages[0]
+            else:
+                self.browser_page = self.browser_context.new_page()
+            
+            # Set up network interception
+            self.browser_page.on("response", self._handle_network_response)
+            
+        except Exception as e:
+            raise exceptions.BrowserError(f"Failed to initialize Camoufox: {e}")
+    
+    def _close_browser(self) -> None:
+        """Close browser if open"""
+        if self.browser:
+            try:
+                # Exit the context manager
+                self.browser.__exit__(None, None, None)
+            except Exception:
+                pass
+            self.browser = None
+            self.browser_context = None
+            self.browser_page = None
+    
+    def _handle_network_response(self, response) -> None:
+        """
+        Handle network responses and cache Google Trends API data
+        
+        Args:
+            response: Playwright response object
+        """
+        url = response.url
+        
+        # Only process Google Trends API responses
+        if '/trends/api/widgetdata/' not in url:
+            return
+        
+        try:
+            # Get response body
+            body = response.body()
+            
+            # Parse the response (remove Google's JSONP prefix - exactly 5 bytes)
+            if body.startswith(b")]}'\n"):
+                body = body[5:]
+            elif body.startswith(b")]}'"):
+                body = body[5:]
+            
+            data = json.loads(body)
+            
+            # Cache by URL pattern
+            if '/widgetdata/multiline' in url:
+                self.browser_responses_cache['interest_over_time'] = data
+            elif '/widgetdata/comparedgeo' in url:
+                self.browser_responses_cache['interest_by_region'] = data
+            elif '/widgetdata/relatedsearches' in url:
+                # keywordType is URL-encoded inside the req parameter
+                import urllib.parse
+                decoded_url = urllib.parse.unquote(url)
+                if 'keywordType":"ENTITY' in decoded_url:
+                    self.browser_responses_cache['related_topics'] = data
+                elif 'keywordType":"QUERY' in decoded_url:
+                    self.browser_responses_cache['related_queries'] = data
+                    
+        except Exception:
+            pass  # Silently ignore parsing errors
+    
+    def _capture_all_api_responses(self, keyword: str) -> None:
+        """
+        Navigate once and capture ALL API responses via network interception
+        
+        Args:
+            keyword: Search keyword to use
+        """
+        if not self.browser_page:
+            raise exceptions.BrowserError("Browser not initialized")
+        
+        # Clear cache
+        self.browser_responses_cache.clear()
+        
+        # Build URL
+        import urllib.parse
+        encoded_keyword = urllib.parse.quote(keyword)
+        url = f"https://trends.google.com/trends/explore?date=today%201-m&q={encoded_keyword}&hl=en-GB"
+        
+        try:
+            # Navigate and wait for network idle
+            self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
+            
+            # Give extra time for any delayed API calls
+            import time
+            time.sleep(2)
+            
+        except Exception as e:
+            raise exceptions.BrowserError(f"Failed to navigate to Google Trends: {e}")
+    
+    def _parse_api_response(self, response_text: str) -> Dict:
+        """
+        Parse API response from Google Trends
+        
+        Google's API responses may contain garbage prefix: ")]}',\n"
+        
+        Args:
+            response_text: Raw response text
+            
+        Returns:
+            Parsed JSON data
+        """
+        # Remove garbage prefix if present
+        if response_text.startswith(")]}',\n"):
+            response_text = response_text[6:]
+        elif response_text.startswith(")]}',"):
+            response_text = response_text[5:]
+        elif response_text.startswith(")]},"):
+            response_text = response_text[5:]
+        elif response_text.startswith(")]}'"):
+            response_text = response_text[4:]
+        
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError as e:
+            raise exceptions.ResponseError(f"Failed to parse API response: {e}")
+    
+    def _parse_multiline_response(self, data: Dict) -> pd.DataFrame:
+        """
+        Parse multiline API response (interest over time)
+        
+        Args:
+            data: Parsed JSON response from multiline API
+            
+        Returns:
+            DataFrame with date index and keyword columns
+        """
+        try:
+            timeline_data = data.get('default', {}).get('timelineData', [])
+            
+            if not timeline_data:
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(timeline_data)
+            
+            # Convert timestamps to datetime
+            df["date"] = pd.to_datetime(df["time"].astype("float64"), unit="s")
+            df = df.set_index("date").sort_index()
+            
+            # Parse values
+            result_df = df["value"].apply(
+                lambda x: pd.Series(str(x).replace("[", "").replace("]", "").split(","))
+            )
+            
+            # Name columns with keywords
+            for idx, kw in enumerate(self.kw_list):
+                result_df.insert(len(result_df.columns), kw, result_df[idx].astype("int"))
+                del result_df[idx]
+            
+            # Add isPartial column
+            if "isPartial" in df:
+                df["isPartial"] = df["isPartial"].where(df["isPartial"].notna(), False)
+                is_partial_df = df["isPartial"].apply(
+                    lambda x: pd.Series(str(x).replace("[", "").replace("]", "").split(","))
+                )
+                is_partial_df.columns = ["isPartial"]
+                is_partial_df["isPartial"] = is_partial_df["isPartial"] == "True"
+                final_df = pd.concat([result_df, is_partial_df], axis=1)
+            else:
+                final_df = result_df
+                final_df["isPartial"] = False
+            
+            return final_df
+            
+        except Exception as e:
+            raise exceptions.ResponseError(f"Failed to parse multiline response: {e}")
+    
+    def _parse_comparedgeo_response(self, data: Dict, inc_geo_code: bool = False) -> pd.DataFrame:
+        """
+        Parse comparedgeo API response (interest by region)
+        
+        Args:
+            data: Parsed JSON response from comparedgeo API
+            inc_geo_code: Include geographic codes in output
+            
+        Returns:
+            DataFrame with geographic distribution
+        """
+        try:
+            geo_data = data.get('default', {}).get('geoMapData', [])
+            
+            if not geo_data:
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(geo_data)
+            
+            # Determine geo column name
+            geo_column = "geoCode" if "geoCode" in df.columns else "coordinates"
+            columns = ["geoName", geo_column, "value"]
+            df = df[columns].set_index("geoName").sort_index()
+            
+            # Parse values
+            result_df = df["value"].apply(
+                lambda x: pd.Series(str(x).replace("[", "").replace("]", "").split(","))
+            )
+            
+            # Name columns with keywords
+            for idx, kw in enumerate(self.kw_list):
+                result_df.insert(len(result_df.columns), kw, result_df[idx].astype("int"))
+                del result_df[idx]
+            
+            # Add geo code if requested
+            if inc_geo_code and geo_column in df.columns:
+                result_df[geo_column] = df[geo_column]
+            
+            return result_df
+            
+        except Exception as e:
+            raise exceptions.ResponseError(f"Failed to parse comparedgeo response: {e}")
+    
+    def _parse_relatedsearches_response(self, data: Dict) -> Dict[str, Optional[pd.DataFrame]]:
+        """
+        Parse relatedsearches API response (related queries or topics)
+        
+        Args:
+            data: Parsed JSON response from relatedsearches API
+            
+        Returns:
+            Dictionary with 'top' and 'rising' DataFrames
+        """
+        try:
+            ranked_list = data.get('default', {}).get('rankedList', [])
+            
+            # Parse top
+            try:
+                top_data = ranked_list[0]['rankedKeyword']
+                if 'topic' in str(top_data[0]) if top_data else False:
+                    # Topics format
+                    df_top = pd.json_normalize(top_data, sep="_")
+                else:
+                    # Queries format
+                    df_top = pd.DataFrame(top_data)
+                    df_top = df_top[["query", "value"]] if "query" in df_top.columns else df_top
+            except (KeyError, IndexError):
+                df_top = None
+            
+            # Parse rising
+            try:
+                rising_data = ranked_list[1]['rankedKeyword']
+                if 'topic' in str(rising_data[0]) if rising_data else False:
+                    # Topics format
+                    df_rising = pd.json_normalize(rising_data, sep="_")
+                else:
+                    # Queries format
+                    df_rising = pd.DataFrame(rising_data)
+                    df_rising = df_rising[["query", "value"]] if "query" in df_rising.columns else df_rising
+            except (KeyError, IndexError):
+                df_rising = None
+            
+            return {"top": df_top, "rising": df_rising}
+            
+        except Exception as e:
+            raise exceptions.ResponseError(f"Failed to parse relatedsearches response: {e}")
 
     def _get_google_cookie(self) -> Dict[str, str]:
         """
@@ -334,8 +688,9 @@ class TrendReq:
         # Convert req to JSON string (required by Google's API)
         self.token_payload["req"] = json.dumps(self.token_payload["req"])
 
-        # Get tokens from Google
-        self._get_tokens()
+        # Get tokens from Google (skip in browser mode)
+        if not self.browser_mode:
+            self._get_tokens()
 
     def _get_tokens(self) -> None:
         """
@@ -384,6 +739,35 @@ class TrendReq:
             >>> df = pytrends.interest_over_time()
             >>> print(df.head())
         """
+        # Browser mode: capture multiline API response
+        if self.browser_mode:
+            if len(self.kw_list) != 1:
+                raise exceptions.InvalidParameterError(
+                    "Browser mode only supports 1 keyword. You provided: "
+                    + str(len(self.kw_list))
+                )
+            
+            keyword = self.kw_list[0]
+            
+            # Capture all responses if not already cached
+            if not self.browser_responses_cache:
+                self._capture_all_api_responses(keyword)
+            
+            # Get cached response
+            response_data = self.browser_responses_cache.get('interest_over_time')
+            
+            if not response_data:
+                # Try one more navigation if cache is empty
+                self._capture_all_api_responses(keyword)
+                response_data = self.browser_responses_cache.get('interest_over_time')
+                
+            if not response_data:
+                raise exceptions.ResponseError("Failed to capture interest_over_time API response")
+            
+            # Parse browser response to DataFrame
+            return self._parse_multiline_response(response_data)
+        
+        # Standard mode: use widgets
         if not self.interest_over_time_widget:
             raise exceptions.ResponseError(
                 "No interest over time widget available. Call build_payload() first."
@@ -469,6 +853,28 @@ class TrendReq:
             >>> df = pytrends.interest_by_region(resolution='REGION')
             >>> print(df.head())
         """
+        # Browser mode: capture comparedgeo API response
+        if self.browser_mode:
+            if len(self.kw_list) != 1:
+                raise exceptions.InvalidParameterError(
+                    "Browser mode only supports 1 keyword"
+                )
+            
+            keyword = self.kw_list[0]
+            
+            # Capture all responses if not already cached
+            if not self.browser_responses_cache:
+                self._capture_all_api_responses(keyword)
+            
+            # Get cached response
+            response_data = self.browser_responses_cache.get('interest_by_region')
+            
+            if not response_data:
+                raise exceptions.ResponseError("Failed to capture interest_by_region API response")
+            
+            return self._parse_comparedgeo_response(response_data, inc_geo_code)
+        
+        # Standard mode
         if not self.interest_by_region_widget:
             raise exceptions.ResponseError(
                 "No interest by region widget available. Call build_payload() first."
@@ -536,6 +942,28 @@ class TrendReq:
             >>> topics = pytrends.related_topics()
             >>> print(topics['Python']['top'].head())
         """
+        # Browser mode: capture relatedsearches ENTITY API response
+        if self.browser_mode:
+            if len(self.kw_list) != 1:
+                raise exceptions.InvalidParameterError(
+                    "Browser mode only supports 1 keyword"
+                )
+            
+            keyword = self.kw_list[0]
+            
+            # Capture all responses if not already cached
+            if not self.browser_responses_cache:
+                self._capture_all_api_responses(keyword)
+            
+            # Get cached response
+            response_data = self.browser_responses_cache.get('related_topics')
+            
+            if not response_data:
+                raise exceptions.ResponseError("Failed to capture related_topics API response")
+            
+            return {keyword: self._parse_relatedsearches_response(response_data)}
+        
+        # Standard mode
         if not self.related_topics_widget_list:
             raise exceptions.ResponseError(
                 "No related topics widgets available. Call build_payload() first."
@@ -599,6 +1027,28 @@ class TrendReq:
             >>> queries = pytrends.related_queries()
             >>> print(queries['Python']['top'].head())
         """
+        # Browser mode: capture relatedsearches QUERY API response
+        if self.browser_mode:
+            if len(self.kw_list) != 1:
+                raise exceptions.InvalidParameterError(
+                    "Browser mode only supports 1 keyword"
+                )
+            
+            keyword = self.kw_list[0]
+            
+            # Capture all responses if not already cached
+            if not self.browser_responses_cache:
+                self._capture_all_api_responses(keyword)
+            
+            # Get cached response
+            response_data = self.browser_responses_cache.get('related_queries')
+            
+            if not response_data:
+                raise exceptions.ResponseError("Failed to capture related_queries API response")
+            
+            return {keyword: self._parse_relatedsearches_response(response_data)}
+        
+        # Standard mode
         if not self.related_queries_widget_list:
             raise exceptions.ResponseError(
                 "No related queries widgets available. Call build_payload() first."

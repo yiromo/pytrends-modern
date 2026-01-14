@@ -5,6 +5,45 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-01-12
+
+### Added
+- 🦊 **Camoufox Browser Mode** - Bypass Google's rate limits using your Google account
+  - Full Camoufox integration with advanced fingerprinting (no bot detection!)
+  - Persistent profile support - log in once, reuse forever
+  - Network interception to capture all 4 Google Trends APIs
+  - New `BrowserConfig` class for Camoufox configuration
+  - New `camoufox_setup` module for easy Google account setup
+  - Command-line setup tool: `python -m pytrends_modern.camoufox_setup`
+  - Profile status checker: `python -m pytrends_modern.camoufox_setup status`
+  - Browser mode works with: `interest_over_time()`, `interest_by_region()`, `related_topics()`, `related_queries()`
+  - Requires `camoufox[geoip]>=0.4.11` and `browserforge[all]>=1.0.0`
+  
+### Changed
+- **BREAKING**: Browser mode now requires profile configuration before first use
+  - Users must run `setup_profile()` or command-line setup to log in to Google
+  - Profile check added to `TrendReq._init_camoufox()` - raises `BrowserError` if not configured
+  - Persistent profile directory: `~/.config/camoufox-pytrends-profile`
+- Replaced DrissionPage with Camoufox for superior anti-detection
+- Browser mode limitations documented:
+  - Only 1 keyword (no comparisons)
+  - Only 'today 1-m' timeframe
+  - Only WORLDWIDE region
+  - But NO rate limits with Google account login!
+
+### Fixed
+- Fixed JSONP prefix removal in response parser (5 bytes not 4)
+- Fixed URL decoding for relatedsearches API keywordType detection
+- Fixed Camoufox context manager usage with `__enter__()` and `__exit__()`
+- Fixed 2-tab issue by reusing existing page instead of creating new one
+- Network interception now correctly caches all 4 API responses
+
+### Technical Details
+- Network interception via Playwright's `page.on("response")` event handler
+- Responses cached by API type: `interest_over_time`, `interest_by_region`, `related_topics`, `related_queries`
+- URL-encoded parameters decoded to detect `keywordType` in relatedsearches URLs
+- Profile validation checks for Firefox profile files: `prefs.js`, `cookies.sqlite`, `storage`
+
 ## [0.1.2] - 2025-12-26
 
 ### Added
