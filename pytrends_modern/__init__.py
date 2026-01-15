@@ -2,7 +2,7 @@
 pytrends-modern: Modern Google Trends API
 """
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __author__ = "pytrends-modern contributors"
 __license__ = "MIT"
 

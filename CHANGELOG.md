@@ -5,6 +5,23 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-01-16
+
+### Added
+- 🛡️ **Anti-Rate-Limit Features** - Prevent 429 errors with browser mode
+  - `min_delay`/`max_delay` parameters for random delays between requests (default: 2-5s)
+  - `persistent_context` option to use fresh profile each run (default: True)
+  - `custom_config` parameter for advanced Camoufox configuration
+  - Automatic fingerprint randomization via Camoufox's BrowserForge integration
+  - New example: `test_rate_limit_fix.py` showing anti-rate-limit configuration
+
+### Changed
+- Removed manual BrowserForge fingerprint generation (Camoufox handles it automatically)
+- Updated documentation with anti-rate-limit best practices
+
+### Fixed
+- Fixed 429 rate limiting issues when making repeated requests with browser mode
+
 ## [0.2.2] - 2026-01-14
 
 ### Added
