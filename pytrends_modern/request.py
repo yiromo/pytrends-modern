@@ -92,7 +92,6 @@ class TrendReq:
                            
                            ⚠️ LIMITATIONS when using browser_config:
                            - Only 1 keyword supported (no comparison)
-                           - Only 'today 1-m' timeframe supported
                            - Only WORLDWIDE geo supported (no geo filtering)
                            - Requires Chrome/Chromium browser installed
         """
@@ -109,7 +108,7 @@ class TrendReq:
             warnings.warn(
                 "⚠️  Camoufox browser mode is EXPERIMENTAL and has limitations:\n"
                 "   - Only 1 keyword supported (no keyword comparison)\n"
-                "   - Only 'today 1-m' timeframe supported\n"
+                "   - Timeframe: 'today 1-m' (default) or 'today 12-m'\n"
                 "   - Only WORLDWIDE geo supported\n"
                 "   - Requires Google account login (first run)\n"
                 "   - Login session is saved for future runs",
@@ -354,7 +353,18 @@ class TrendReq:
         # Build URL
         import urllib.parse
         encoded_keyword = urllib.parse.quote(keyword)
-        url = f"https://trends.google.com/trends/explore?date=today%201-m&q={encoded_keyword}&hl=en-GB"
+        
+        # Get timeframe from config (default: 'today 1-m')
+        timeframe = getattr(self.browser_config, 'timeframe', 'today 1-m')
+        
+        # Build URL with or without date parameter
+        if timeframe == 'today 12-m':
+            # Past 12 months - no date parameter needed
+            url = f"https://trends.google.com/trends/explore?q={encoded_keyword}&hl=en-GB"
+        else:
+            # Default: today 1-m or custom timeframe
+            encoded_timeframe = urllib.parse.quote(timeframe)
+            url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}&q={encoded_keyword}&hl=en-GB"
         
         try:
             # Navigate and wait for network idle

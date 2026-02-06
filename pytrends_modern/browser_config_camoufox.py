@@ -12,7 +12,6 @@ class BrowserConfig:
     
     ⚠️ LIMITATIONS:
     - Only 1 keyword supported (no comparison)
-    - Only 'today 1-m' timeframe supported
     - Only WORLDWIDE geo supported (no geo filtering)
     - Requires Google account login (first run)
     
@@ -35,6 +34,9 @@ class BrowserConfig:
         max_delay: Maximum delay between requests in seconds (default: 5)
         persistent_context: Keep browser profile between sessions (default: True)
                           Set to False to use fresh profile each time (helps avoid 429)
+        timeframe: Time range for trends data (default: 'today 1-m')
+                  - 'today 1-m': Past month
+                  - 'today 12-m': Past 12 months
     
     Example:
         >>> from pytrends_modern import TrendReq, BrowserConfig
@@ -68,6 +70,7 @@ class BrowserConfig:
         max_delay: float = 5.0,
         persistent_context: bool = True,
         custom_config: Optional[Dict[str, Any]] = None,
+        timeframe: str = 'today 1-m',
     ):
         self.headless = headless
         self.proxy_server = proxy_server
@@ -82,4 +85,5 @@ class BrowserConfig:
         self.max_delay = max_delay
         self.persistent_context = persistent_context
         self.custom_config = custom_config or {}
+        self.timeframe = timeframe
 

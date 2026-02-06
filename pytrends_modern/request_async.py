@@ -216,7 +216,18 @@ class AsyncTrendReq:
         # Build URL
         import urllib.parse
         encoded_keyword = urllib.parse.quote(keyword)
-        url = f"https://trends.google.com/trends/explore?date=today%201-m&q={encoded_keyword}&hl=en-GB"
+        
+        # Get timeframe from config (default: 'today 1-m')
+        timeframe = getattr(self.browser_config, 'timeframe', 'today 1-m')
+        
+        # Build URL with or without date parameter
+        if timeframe == 'today 12-m':
+            # Past 12 months - no date parameter needed
+            url = f"https://trends.google.com/trends/explore?q={encoded_keyword}&hl=en-GB"
+        else:
+            # Default: today 1-m or custom timeframe
+            encoded_timeframe = urllib.parse.quote(timeframe)
+            url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}&q={encoded_keyword}&hl=en-GB"
         
         try:
             # Navigate and wait for network idle
