@@ -220,14 +220,24 @@ class AsyncTrendReq:
         # Get timeframe from config (default: 'today 1-m')
         timeframe = getattr(self.browser_config, 'timeframe', 'today 1-m')
         
+        # Get YouTube mode from config (default: False)
+        youtube = getattr(self.browser_config, 'youtube', False)
+        
         # Build URL with or without date parameter
         if timeframe == 'today 12-m':
             # Past 12 months - no date parameter needed
-            url = f"https://trends.google.com/trends/explore?q={encoded_keyword}&hl=en-GB"
+            base_url = f"https://trends.google.com/trends/explore?q={encoded_keyword}"
         else:
             # Default: today 1-m or custom timeframe
             encoded_timeframe = urllib.parse.quote(timeframe)
-            url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}&q={encoded_keyword}&hl=en-GB"
+            base_url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}&q={encoded_keyword}"
+        
+        # Add YouTube property if enabled
+        if youtube:
+            base_url += "&gprop=youtube"
+        
+        # Add language parameter
+        url = base_url + "&hl=en-GB"
         
         try:
             # Navigate and wait for network idle

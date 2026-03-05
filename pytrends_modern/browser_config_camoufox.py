@@ -37,6 +37,7 @@ class BrowserConfig:
         timeframe: Time range for trends data (default: 'today 1-m')
                   - 'today 1-m': Past month
                   - 'today 12-m': Past 12 months
+        youtube: Search YouTube instead of Google Search (default: False)
     
     Example:
         >>> from pytrends_modern import TrendReq, BrowserConfig
@@ -71,6 +72,7 @@ class BrowserConfig:
         persistent_context: bool = True,
         custom_config: Optional[Dict[str, Any]] = None,
         timeframe: str = 'today 1-m',
+        youtube: bool = False,
     ):
         self.headless = headless
         self.proxy_server = proxy_server
@@ -86,4 +88,5 @@ class BrowserConfig:
         self.persistent_context = persistent_context
         self.custom_config = custom_config or {}
         self.timeframe = timeframe
+        self.youtube = youtube
 
