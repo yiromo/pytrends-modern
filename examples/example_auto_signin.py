@@ -60,17 +60,23 @@ print("=" * 70)
 print("⚠️  Shown for completeness. Use env var in production.\n")
 
 from pytrends_modern import TrendReq, BrowserConfig
+import random
 
-config = BrowserConfig(
-    headless=False,
-    google_sign_in=True,
-    google_password="qwe123qwe123",   # ← never commit this!
-)
+distros = ["windows", "linux", "macos"]
 
-pytrends = TrendReq(browser_config=config)
-pytrends.kw_list = ['Python']
-df = pytrends.interest_over_time()
-print(df.head())
+# config = BrowserConfig(
+#     headless=False,
+#     google_sign_in=True,
+#     google_password="YOUR_PASSWORD_HERE",
+#     humanize=True,
+#     os=distros[random.randint(0, 2)],
+#     rotate_fingerprint=True,
+# )
+#
+# pytrends = TrendReq(browser_config=config)
+# pytrends.kw_list = ['Python']
+# df = pytrends.interest_over_time()
+# print(df.head())
 
 # ---------------------------------------------------------------------------
 # Option C: Auto sign-in during profile setup (one-time, then reuse profile)

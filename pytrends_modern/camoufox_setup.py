@@ -254,6 +254,178 @@ def auto_google_sign_in(page, password: str, step_timeout: float = 5.0) -> bool:
     return True
 
 
+async def _afind_sign_in_button(page) -> bool:
+    """Async version of _find_sign_in_button."""
+    sign_in_labels = ["Sign in", "Anmelden", "Войти"]
+    for label in sign_in_labels:
+        try:
+            locator = page.locator(f'a[aria-label="{label}"]')
+            if await locator.count() > 0 and await locator.first.is_visible():
+                return True
+        except Exception:
+            pass
+
+    try:
+        xpath = '/html/body/div[3]/header/div[2]/div[3]/div[1]/a'
+        locator = page.locator(f'xpath={xpath}')
+        if await locator.count() > 0:
+            text_content = await locator.first.text_content()
+            if text_content and any(
+                label.lower() in text_content.lower() for label in sign_in_labels
+            ):
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+async def _aclick_sign_in_button(page) -> bool:
+    """Async version of _click_sign_in_button."""
+    sign_in_labels = ["Sign in", "Anmelden", "Войти"]
+    for label in sign_in_labels:
+        try:
+            locator = page.locator(f'a[aria-label="{label}"]')
+            if await locator.count() > 0 and await locator.first.is_visible():
+                await locator.first.click()
+                return True
+        except Exception:
+            pass
+
+    try:
+        xpath = '/html/body/div[3]/header/div[2]/div[3]/div[1]/a'
+        locator = page.locator(f'xpath={xpath}')
+        if await locator.count() > 0:
+            await locator.first.click()
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+async def _aclick_first_account(page, timeout: float = 5.0) -> bool:
+    """Async version of _click_first_account."""
+    try:
+        account_xpath = (
+            '/html/body/div[2]/div[1]/div[1]/div[2]/c-wiz/main'
+            '/div[2]/div/div/div/span/section/div/div/div/div/ul/li[1]'
+        )
+        first_account = page.locator(f'xpath={account_xpath}')
+        await first_account.wait_for(state="visible", timeout=timeout * 1000)
+        await first_account.click()
+        return True
+    except Exception:
+        pass
+
+    try:
+        list_items = page.locator('ul li')
+        if await list_items.count() > 0:
+            await list_items.first.click()
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+async def _afill_password(page, password: str, timeout: float = 5.0) -> bool:
+    """Async version of _fill_password."""
+    try:
+        pw_input = page.locator('input[type="password"]')
+        await pw_input.wait_for(state="visible", timeout=timeout * 1000)
+        await pw_input.fill(password)
+        return True
+    except Exception:
+        pass
+
+    try:
+        pw_xpath = (
+            '/html/body/div[2]/div[1]/div[1]/div[2]/c-wiz/main'
+            '/div[2]/div/div/div/span/section[2]/div/div/div[1]'
+            '/div[1]/div/div/div/div/div[1]/div/div[1]/input'
+        )
+        pw_input = page.locator(f'xpath={pw_xpath}')
+        await pw_input.wait_for(state="visible", timeout=timeout * 1000)
+        await pw_input.fill(password)
+        return True
+    except Exception:
+        pass
+
+    return False
+
+
+async def _aclick_next_button(page, timeout: float = 5.0) -> bool:
+    """Async version of _click_next_button."""
+    next_labels = ["Next", "Weiter", "Далее"]
+    for label in next_labels:
+        try:
+            btn = page.locator(f'button:has-text("{label}")')
+            if await btn.count() > 0:
+                await btn.first.click()
+                return True
+        except Exception:
+            pass
+
+    try:
+        next_xpath = (
+            '/html/body/div[2]/div[1]/div[1]/div[2]/c-wiz/main'
+            '/div[3]/div/div[1]/div/div/button/span'
+        )
+        btn = page.locator(f'xpath={next_xpath}')
+        await btn.wait_for(state="visible", timeout=timeout * 1000)
+        parent_btn = btn.locator('xpath=..')
+        await parent_btn.click()
+        return True
+    except Exception:
+        pass
+
+    try:
+        btn = page.locator('button div[role="button"]')
+        if await btn.count() > 0:
+            await btn.first.click()
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+async def auto_google_sign_in_async(page, password: str, step_timeout: float = 5.0) -> bool:
+    """
+    Async version of auto_google_sign_in.
+
+    Same logic but awaits all Playwright calls. Use this with async
+    Camoufox pages (AsyncTrendReq).
+    """
+    if not await _afind_sign_in_button(page):
+        return True
+
+    if not await _aclick_sign_in_button(page):
+        raise Exception("Auto sign-in failed: Could not click 'Sign in' button")
+    await page.wait_for_timeout(1500)
+
+    if not await _aclick_first_account(page, timeout=step_timeout):
+        raise Exception("Auto sign-in failed: Could not select account from the list")
+    await page.wait_for_timeout(1500)
+
+    if not await _afill_password(page, password, timeout=step_timeout):
+        raise Exception("Auto sign-in failed: Could not find or fill password input")
+    await page.wait_for_timeout(500)
+
+    if not await _aclick_next_button(page, timeout=step_timeout):
+        raise Exception("Auto sign-in failed: Could not click 'Next' button after password")
+    await page.wait_for_timeout(1500)
+
+    if await _afind_sign_in_button(page):
+        raise Exception(
+            "Auto sign-in failed: 'Sign in' button still present after login. "
+            "The password may be incorrect or additional verification is required."
+        )
+
+    return True
+
+
 def setup_profile(
     profile_dir: Optional[str] = None,
     headless: bool = False,
@@ -340,7 +512,7 @@ def setup_profile(
             
             # Navigate to Google Trends
             page.goto(
-                "https://trends.google.com/trends/explore?q=Python&hl=en-GB",
+                "https://trends.google.com/trends/explore?q=Python&legacy&hl=en-GB",
                 wait_until='networkidle',
                 timeout=60000
             )

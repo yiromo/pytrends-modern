@@ -320,7 +320,7 @@ class TrendReq:
 
         try:
             self.browser_page.goto(
-                "https://trends.google.com/trends/explore?q=Python&hl=en-GB",
+                "https://trends.google.com/trends/explore?q=Python&legacy&hl=en-GB",
                 wait_until='networkidle',
                 timeout=60000,
             )
@@ -413,8 +413,8 @@ class TrendReq:
         if youtube:
             base_url += "&gprop=youtube"
         
-        # Add language parameter
-        url = base_url + "&hl=en-GB"
+        # Add language and legacy parameter
+        url = base_url + "&legacy&hl=en-GB"
         
         try:
             self.browser_page.goto(url, wait_until='networkidle', timeout=60000)

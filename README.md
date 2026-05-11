@@ -81,6 +81,8 @@ df = pytrends.interest_over_time()
 
 **Limitations:** 1 keyword per request, worldwide geo only, `today 1-m` or `today 12-m` timeframes.
 
+> **Note:** Browser mode automatically uses the legacy Google Trends UI (`&legacy` parameter) for more reliable API responses and consistent behavior.
+
 ### Auto Google Sign-In
 
 Automate the entire login flow — no manual interaction needed. Password is read from `BrowserConfig(google_password=...)` or the `GOOGLE_ACC_PASSWORD` environment variable.

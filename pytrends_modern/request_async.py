@@ -181,45 +181,15 @@ class AsyncTrendReq:
 
         try:
             await self.browser_page.goto(
-                "https://trends.google.com/trends/explore?q=Python&hl=en-GB",
+                "https://trends.google.com/trends/explore?q=Python&legacy&hl=en-GB",
                 wait_until='networkidle',
                 timeout=60000,
             )
             import asyncio
             await asyncio.sleep(1)
 
-            from pytrends_modern.camoufox_setup import (
-                _find_sign_in_button,
-                _click_sign_in_button,
-                _click_first_account,
-                _fill_password,
-                _click_next_button,
-            )
-
-            if not _find_sign_in_button(self.browser_page):
-                return
-
-            if not _click_sign_in_button(self.browser_page):
-                raise Exception("Could not click 'Sign in' button")
-            await self.browser_page.wait_for_timeout(1500)
-
-            if not _click_first_account(self.browser_page):
-                raise Exception("Could not select account from the list")
-            await self.browser_page.wait_for_timeout(1500)
-
-            if not _fill_password(self.browser_page, password):
-                raise Exception("Could not find or fill password input")
-            await self.browser_page.wait_for_timeout(500)
-
-            if not _click_next_button(self.browser_page):
-                raise Exception("Could not click 'Next' button after password")
-            await self.browser_page.wait_for_timeout(1500)
-
-            if _find_sign_in_button(self.browser_page):
-                raise Exception(
-                    "Sign-in button still present after login. "
-                    "Password may be incorrect or additional verification required."
-                )
+            from pytrends_modern.camoufox_setup import auto_google_sign_in_async
+            await auto_google_sign_in_async(self.browser_page, password)
         except exceptions.BrowserError:
             raise
         except Exception as e:
@@ -306,8 +276,8 @@ class AsyncTrendReq:
         if youtube:
             base_url += "&gprop=youtube"
         
-        # Add language parameter
-        url = base_url + "&hl=en-GB"
+        # Add language and legacy parameter
+        url = base_url + "&legacy&hl=en-GB"
         
         try:
             await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
@@ -316,9 +286,9 @@ class AsyncTrendReq:
             await asyncio.sleep(2)
 
             if getattr(self.browser_config, 'google_sign_in', False):
-                from pytrends_modern.camoufox_setup import _find_sign_in_button
+                from pytrends_modern.camoufox_setup import _afind_sign_in_button
                 password = getattr(self, '_google_password', None)
-                if _find_sign_in_button(self.browser_page) and password:
+                if await _afind_sign_in_button(self.browser_page) and password:
                     await self._ensure_signed_in()
                     await asyncio.sleep(1)
                     self.browser_responses_cache.clear()

@@ -3,7 +3,23 @@
 All notable changes to pytrends-modern will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.2.7] - 2026-05-12
+
+### Fixed
+- **Async sign-in coroutines not awaited** — `AsyncTrendReq` called sync Playwright helpers
+  (`_find_sign_in_button`, `_click_sign_in_button`, etc.) on async page objects, causing
+  `RuntimeWarning: coroutine 'Locator.count' was never awaited` and silent sign-in failure.
+  Added 6 async counterparts (`_afind_sign_in_button`, `_aclick_sign_in_button`,
+  `_aclick_first_account`, `_afill_password`, `_aclick_next_button`, `auto_google_sign_in_async`)
+  that properly `await` all Playwright locator methods.
+- `AsyncTrendReq._ensure_signed_in()` now uses `auto_google_sign_in_async()`
+- `AsyncTrendReq._capture_all_api_responses()` now uses `await _afind_sign_in_button()`
+
+### Changed
+- All browser mode URLs now include `&legacy` parameter to force the legacy Google Trends UI
+  for more reliable API responses. Affects sync and async modes, setup, and test.
 
 ## [0.2.6] - 2026-05-11
 
