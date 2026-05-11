@@ -17,6 +17,7 @@ from pytrends_modern.exceptions import (
     InvalidParameterError,
     BrowserError,
     DownloadError,
+    ConfigurationError,
 )
 
 try:
@@ -36,4 +37,5 @@ __all__ = [
     "InvalidParameterError",
     "BrowserError",
     "DownloadError",
+    "ConfigurationError",
 ]

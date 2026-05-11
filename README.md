@@ -1,491 +1,289 @@
 # pytrends-modern
 
-**The Modern Google Trends API** - Combining the best features from pytrends, trendspyg, and more.
+Modern Google Trends API — HTTP API, RSS feeds, browser automation, and Selenium scraping in one library.
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🌟 Why pytrends-modern?
+## Features
 
-pytrends-modern is a **next-generation** Google Trends library that combines:
+- **Full Google Trends API** — interest over time, by region, related topics/queries, suggestions
+- **RSS Feed** — fast real-time trending data with images and news articles
+- **Camoufox Browser Mode** — bypass rate limits with anti-detection fingerprinting and Google account login
+- **Auto Google Sign-In** — automated login flow, zero manual interaction
+- **Async Support** — `AsyncTrendReq` with async Camoufox browser
+- **Selenium Scraper** — CSV export for comprehensive trending data when API endpoints are deprecated
+- **CLI** — command-line interface with Rich table output
+- **Retry & Proxy Rotation** — exponential backoff, multi-proxy support, user-agent rotation
 
-- ✅ **All classic pytrends features** - Interest over time, by region, related topics/queries
-- ✅ **RSS Feed Support** - Fast real-time trending data with rich media (0.2s vs 10s)
-- ✅ **Enhanced Error Handling** - Automatic retries, rate limit management, proxy rotation
-- ✅ **Modern Python** - Full type hints, async support, dataclasses
-- ✅ **Selenium Integration** - Advanced scraping when needed
-- ✅ **Multiple Export Formats** - CSV, JSON, Parquet, Excel, DataFrame
-- ✅ **Comprehensive CLI** - Easy command-line interface with rich output
-- ✅ **Better Rate Limiting** - Smart backoff, quota management
-- ✅ **Active Maintenance** - Modern codebase, actively maintained
-
-## 🚀 Quick Start
-
-### Installation
+## Installation
 
 ```bash
-# Basic installation
 pip install pytrends-modern
 
-# With browser mode (Camoufox for bypassing rate limits)
-pip install pytrends-modern[browser]
-
-# With Selenium support (for advanced scraping)
-pip install pytrends-modern[selenium]
-
-# With CLI support
-pip install pytrends-modern[cli]
-
-# With all features
-pip install pytrends-modern[all]
+# Optional extras
+pip install pytrends-modern[browser]    # Camoufox browser mode
+pip install pytrends-modern[selenium]   # Selenium scraper
+pip install pytrends-modern[cli]        # CLI with Rich output
+pip install pytrends-modern[all]        # selenium + cli + export
 ```
 
-### Basic Usage
+## Quick Start
+
+### HTTP API (Standard Mode)
 
 ```python
 from pytrends_modern import TrendReq
 
-# Initialize
 pytrends = TrendReq(hl='en-US', tz=360)
-
-# Build payload
 pytrends.build_payload(
     kw_list=['Python', 'JavaScript'],
     timeframe='today 12-m',
-    geo='US'
+    geo='US',
 )
 
-# Get interest over time
 interest_df = pytrends.interest_over_time()
-print(interest_df.head())
-
-# Get interest by region
 region_df = pytrends.interest_by_region()
-print(region_df.head())
-
-# Get related queries
 related = pytrends.related_queries()
-print(related['Python']['top'])
 ```
 
-### 🦊 Browser Mode (Camoufox) - Bypass Rate Limits
+### RSS Feed
 
-**NEW!** Use Camoufox with advanced fingerprinting to bypass Google's rate limits by using your Google account:
+```python
+from pytrends_modern import TrendsRSS
+
+rss = TrendsRSS()
+trends = rss.get_trends(geo='US')
+
+for trend in trends:
+    print(f"{trend['title']}: {trend['traffic']} traffic")
+    for article in trend.get('articles', []):
+        print(f"  - {article['title']} ({article['source']})")
+```
+
+### Browser Mode (Camoufox)
+
+Uses a real browser with anti-detection fingerprinting to access Google Trends via your Google account. Requires a one-time profile setup.
 
 ```python
 from pytrends_modern import TrendReq, BrowserConfig
 from pytrends_modern.camoufox_setup import setup_profile
 
-# First-time setup: Configure Google account login
-setup_profile()  # Opens browser - log in to Google once
+# One-time: open browser and log in to Google (saves profile)
+setup_profile()
 
-# Use browser mode (persistent login, no rate limits!)
+# After setup: use browser mode normally
 config = BrowserConfig(headless=False)
 pytrends = TrendReq(browser_config=config)
-
-# Works like normal API
 pytrends.kw_list = ['Python']
 df = pytrends.interest_over_time()
-print(df.head())
 ```
 
-**Avoiding 429 Rate Limits:**
+**Limitations:** 1 keyword per request, worldwide geo only, `today 1-m` or `today 12-m` timeframes.
 
-If you're getting 429 errors even with browser mode, use these anti-rate-limit features:
+### Auto Google Sign-In
+
+Automate the entire login flow — no manual interaction needed. Password is read from `BrowserConfig(google_password=...)` or the `GOOGLE_ACC_PASSWORD` environment variable.
+
+```python
+from pytrends_modern import TrendReq, BrowserConfig
+
+config = BrowserConfig(
+    google_sign_in=True,
+    # google_password="...",           # or set GOOGLE_ACC_PASSWORD env var
+)
+pytrends = TrendReq(browser_config=config)  # auto sign-in on first use
+pytrends.kw_list = ['Python']
+df = pytrends.interest_over_time()
+```
+
+Or run from the command line:
+
+```bash
+GOOGLE_ACC_PASSWORD="your_password" python -m pytrends_modern.camoufox_setup auto-signin
+```
+
+Auto sign-in also works if your session expires mid-run — it will detect the "Sign in" button and re-authenticate automatically.
+
+### Selenium Scraper
+
+For comprehensive trending data (400+ results) when the API is unavailable:
+
+```python
+from pytrends_modern import TrendsScraper
+
+scraper = TrendsScraper(headless=True)
+df = scraper.trending_searches(geo='US', hours=24)
+scraper.close()
+```
+
+### CLI
+
+```bash
+pytrends-modern interest -k "Python,JavaScript" -t "today 12-m"
+pytrends-modern region -k "Python" -g "US"
+pytrends-modern rss -g US --format json -o trends.json
+pytrends-modern suggest -k "python"
+pytrends-modern trending -c united_states
+```
+
+## API Reference
+
+### TrendReq
+
+```python
+TrendReq(
+    hl='en-US',              # Language
+    tz=360,                  # Timezone offset in minutes
+    geo='',                  # Geographic location (e.g., 'US', 'US-CA')
+    timeout=(10, 25),        # (connect, read) timeouts
+    proxies=None,            # List[str] or Dict[str, str]
+    retries=3,               # Retry attempts
+    backoff_factor=0.3,      # Exponential backoff multiplier
+    rotate_user_agent=True,  # Rotate user agents
+    browser_config=None,     # BrowserConfig for Camoufox mode
+)
+```
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `build_payload(kw_list, cat, timeframe, geo, gprop)` | Set up query (max 5 keywords) |
+| `interest_over_time()` | Historical search interest DataFrame |
+| `interest_by_region(resolution, inc_low_vol, inc_geo_code)` | Geographic distribution |
+| `related_topics()` | Related topics dict |
+| `related_queries()` | Related queries dict |
+| `trending_searches(pn)` | Trending searches by country |
+| `today_searches(pn)` | Daily trends |
+| `realtime_trending_searches(pn, cat, count)` | Real-time trends |
+| `top_charts(date, hl, tz, geo)` | Top charts for a year |
+| `suggestions(keyword)` | Keyword autocomplete suggestions |
+| `categories()` | Available category list |
+
+**Timeframes:** `now 1-H`, `now 4-H`, `now 1-d`, `now 7-d`, `today 1-m`, `today 3-m`, `today 12-m`, `today 5-y`, `all`, or `YYYY-MM-DD YYYY-MM-DD`.
+
+### BrowserConfig
+
+```python
+from pytrends_modern import BrowserConfig
+
+config = BrowserConfig(
+    headless=False,           # bool or "virtual" (Xvfb for Docker)
+    proxy_server=None,        # e.g., 'http://proxy.com:8080'
+    proxy_username=None,
+    proxy_password=None,
+    user_data_dir=None,       # default: ~/.config/camoufox-pytrends-profile
+    humanize=True,            # human-like cursor movement
+    os='linux',               # fingerprint OS: 'windows', 'macos', 'linux'
+    geoip=True,               # auto-detect geo from proxy IP
+    min_delay=2.0,            # min delay between requests (seconds)
+    max_delay=5.0,            # max delay between requests
+    persistent_context=True,  # keep profile between sessions
+    timeframe='today 1-m',    # 'today 1-m' or 'today 12-m'
+    youtube=False,            # search YouTube instead of Google
+    google_sign_in=False,     # auto sign-in if session expired
+    google_password=None,     # or set GOOGLE_ACC_PASSWORD env var
+)
+```
+
+### AsyncTrendReq
+
+Async version of browser mode. Requires `BrowserConfig` (HTTP-only async is not supported).
+
+```python
+import asyncio
+from pytrends_modern import AsyncTrendReq, BrowserConfig
+
+async def main():
+    config = BrowserConfig(headless=True)
+    async with AsyncTrendReq(browser_config=config) as pytrends:
+        pytrends.kw_list = ['Python']
+        df = await pytrends.interest_over_time()
+        print(df.head())
+
+asyncio.run(main())
+```
+
+### TrendsRSS
+
+```python
+from pytrends_modern import TrendsRSS
+
+rss = TrendsRSS(timeout=10)
+trends = rss.get_trends(
+    geo='US',                         # country or US state code
+    output_format='dict',             # 'dict', 'json', 'csv', 'dataframe'
+    include_images=True,
+    include_articles=True,
+    max_articles_per_trend=5,
+)
+```
+
+### TrendsScraper
+
+```python
+from pytrends_modern import TrendsScraper
+
+with TrendsScraper(headless=True) as scraper:
+    df = scraper.trending_searches(geo='US', hours=24, category='all')
+```
+
+## Profile Management (CLI)
+
+```bash
+python -m pytrends_modern.camoufox_setup              # interactive setup
+python -m pytrends_modern.camoufox_setup status        # check profile status
+python -m pytrends_modern.camoufox_setup test          # test saved profile
+python -m pytrends_modern.camoufox_setup clean         # clean cache/junk
+python -m pytrends_modern.camoufox_setup export [path] # export for Docker
+python -m pytrends_modern.camoufox_setup import_profile <path>  # import profile
+python -m pytrends_modern.camoufox_setup auto-signin   # auto sign-in with password
+```
+
+## Proxy Support
+
+```python
+# List of proxies (automatic rotation)
+pytrends = TrendReq(proxies=['https://proxy1:8080', 'https://proxy2:8080'])
+
+# Dict format
+pytrends = TrendReq(proxies={'https': 'https://proxy.com:8080'})
+
+# Browser mode with proxy
+config = BrowserConfig(proxy_server='http://proxy.com:8080', proxy_username='user', proxy_password='pass')
+```
+
+## Anti-Rate-Limiting (Browser Mode)
 
 ```python
 import random
 from pytrends_modern import TrendReq, BrowserConfig
 
-# Add delays + rotate OS fingerprint
-os_choice = random.choice(['windows', 'macos', 'linux'])
 config = BrowserConfig(
     headless=False,
-    min_delay=3.0,             # Min delay between requests (seconds)
-    max_delay=7.0,             # Max delay between requests
-    persistent_context=True,    # Keep Google login
-    os=os_choice,              # Rotate OS fingerprint
-    humanize=True
+    min_delay=3.0,
+    max_delay=7.0,
+    os=random.choice(['windows', 'macos', 'linux']),
+    humanize=True,
+    google_sign_in=True,  # auto re-login if session expires
 )
-
 pytrends = TrendReq(browser_config=config)
-# Delays are automatically added before each request
 ```
 
-**Anti-Rate-Limit Options:**
-- `min_delay` / `max_delay` - Random delay between requests (default: 2-5s)
-- `os` - Rotate between 'windows', 'macos', 'linux' for different fingerprints
-- `persistent_context=False` - Fresh profile each time (no cookies)
-- `proxy_server` - Use proxy to rotate IPs
-- `humanize=True` - Human-like cursor movements (enabled by default)
-
-**Browser Mode Limitations:**
-- ⚠️ Only 1 keyword at a time (no comparisons)
-- ⚠️ Only 'today 1-m' timeframe
-- ⚠️ Only WORLDWIDE region
-- ✅ No rate limits (uses your Google account)
-- ✅ Perfect anti-detection with Camoufox fingerprinting
-
-**Setup from command line:**
-```bash
-# Check profile status
-python -m pytrends_modern.camoufox_setup status
-
-# Test
-python -m pytrends_modern.camoufox_setup test
-
-# Run setup (opens browser for Google login)
-python -m pytrends_modern.camoufox_setup
-
-# Export profile for Docker/other machines
-python -m pytrends_modern.camoufox_setup export camoufox-profile.tar.gz
-
-# Import profile on another machine
-python -m pytrends_modern.camoufox_setup import camoufox-profile.tar.gz
-```
-
-**Docker Usage:**
-
-Yes! You can export your profile and use it in Docker containers:
+## Testing
 
 ```bash
-# 1. Export profile locally
-python -m pytrends_modern.camoufox_setup export profile.tar.gz
-
-# 2. Use in Dockerfile
-COPY profile.tar.gz /tmp/
-RUN mkdir -p /root/.config && \
-    cd /root/.config && \
-    tar -xzf /tmp/profile.tar.gz
-
-# 3. Use headless="virtual" in container
-config = BrowserConfig(headless="virtual")  # Use Xvfb for Docker
+pytest                                    # unit tests
+pytest --integration                      # include live API tests
+pytest --cov=pytrends_modern              # with coverage
 ```
 
-**Headless Options:**
-- `headless=False` - Show browser window (local development)
-- `headless=True` - Standard headless (servers with display)
-- `headless="virtual"` - Xvfb virtual display (Docker containers)
+## Credits
 
-See `Dockerfile.example` and `examples/example_docker_usage.py` for complete Docker setup.
+- [pytrends](https://github.com/GeneralMills/pytrends) — original Google Trends API
+- [trendspyg](https://github.com/flack0x/trendspyg) — RSS feed support and Selenium approach
 
-⚠️ **Security**: Profile contains Google session - keep secure, don't commit to git!
-
-### RSS Feed (Fast Real-Time Data)
-
-```python
-from pytrends_modern import TrendsRSS
-
-# Get trending searches with rich media
-rss = TrendsRSS()
-trends = rss.get_trends(geo='US')
-
-for trend in trends:
-    print(f"Title: {trend['title']}")
-    print(f"Traffic: {trend['traffic']}")
-    print(f"Articles: {len(trend['articles'])}")
-    print(f"Image: {trend['picture']}")
-    print("---")
-```
-
-### CLI Usage
-
-```bash
-# Get interest over time
-pytrends-modern interest --keywords "Python,JavaScript" --timeframe "today 12-m"
-
-# Get trending searches
-pytrends-modern trending --geo US
-
-# Get RSS feed
-pytrends-modern rss --geo US --format json
-
-# Export to CSV
-pytrends-modern interest --keywords "AI" --output trends.csv
-```
-
-## 📊 Features Comparison
-
-| Feature | pytrends | trendspyg | pytrends-modern |
-|---------|----------|-----------|---------------|
-| Interest Over Time | ✅ | ❌ | ✅ |
-| Interest by Region | ✅ | ❌ | ✅ |
-| Related Topics/Queries | ✅ | ❌ | ✅ |
-| RSS Feed | ❌ | ✅ | ✅ |
-| Rich Media (Images/Articles) | ❌ | ✅ | ✅ |
-| Selenium Support | ❌ | ✅ | ✅ |
-| Type Hints | ❌ | ✅ | ✅ |
-| Async Support | ❌ | ❌ | ✅ |
-| CLI | ❌ | ✅ | ✅ |
-| Active Maintenance | ❌ | ✅ | ✅ |
-| Auto Retry | Partial | ✅ | ✅ |
-| Multiple Export Formats | ❌ | ✅ | ✅ |
-
-## 🎯 Key Features
-
-### 1. Classic Trends Data
-All the beloved pytrends methods, modernized:
-- `interest_over_time()` - Historical search interest
-- `interest_by_region()` - Geographic distribution
-- `related_topics()` - Related topics
-- `related_queries()` - Related searches
-- `trending_searches()` - Current trending searches
-- `today_searches()` - Daily trends
-- `realtime_trending_searches()` - Real-time trends
-- `suggestions()` - Keyword suggestions
-
-### 2. RSS Feed Support
-Fast access to real-time trending data:
-- **0.2 seconds** vs 10+ seconds for full scraping
-- Rich media: images, news articles, headlines
-- Perfect for monitoring and journalism
-- Multiple geo support (125+ countries)
-
-### 3. Enhanced Error Handling
-- Automatic retry with exponential backoff
-- Rate limit detection and management
-- Proxy rotation support
-- Better error messages
-
-### 4. Modern Python Features
-- Full type hints for IDE support
-- Async/await support for concurrent requests
-- Dataclasses for structured data
-- Modern exception handling
-
-### 5. Selenium Integration
-- Fallback for advanced scraping needs
-- Handles JavaScript-rendered content
-- Automatic driver management
-- Headless mode support
-
-### 6. Multiple Export Formats
-```python
-# Export to various formats
-df = pytrends.interest_over_time()
-
-# CSV
-df.to_csv('trends.csv')
-
-# JSON
-pytrends.to_json('trends.json')
-
-# Parquet (requires pyarrow)
-pytrends.to_parquet('trends.parquet')
-
-# Excel (requires openpyxl)
-df.to_excel('trends.xlsx')
-```
-
-## 📚 Documentation
-
-### TrendReq Class
-
-The main class for Google Trends API access.
-
-```python
-TrendReq(
-    hl='en-US',          # Language
-    tz=360,              # Timezone offset
-    geo='',              # Geographic location
-    timeout=(2, 5),      # (connect, read) timeouts
-    proxies=None,        # Proxy list or dict
-    retries=3,           # Number of retries
-    backoff_factor=0.3,  # Backoff multiplier
-    verify_ssl=True      # SSL verification
-)
-```
-
-### Build Payload
-
-```python
-pytrends.build_payload(
-    kw_list=['keyword1', 'keyword2'],  # Max 5 keywords
-    cat=0,                              # Category (0 = all)
-    timeframe='today 5-y',             # Time range
-    geo='',                            # Geographic location
-    gprop=''                           # Property ('', 'images', 'news', 'youtube', 'froogle')
-)
-```
-
-### Time Frames
-- `'now 1-H'` - Last hour
-- `'now 4-H'` - Last 4 hours
-- `'now 1-d'` - Last day
-- `'now 7-d'` - Last 7 days
-- `'today 1-m'` - Past 30 days
-- `'today 3-m'` - Past 90 days
-- `'today 12-m'` - Past 12 months
-- `'today 5-y'` - Past 5 years (default)
-- `'all'` - Since 2004
-- `'YYYY-MM-DD YYYY-MM-DD'` - Custom range
-
-### Geographic Codes
-Use ISO 3166-1 alpha-2 country codes:
-- `'US'` - United States
-- `'GB'` - United Kingdom
-- `'US-CA'` - California (US states)
-- `'FR'` - France
-- etc.
-
-### Categories
-Common category codes:
-- `0` - All categories
-- `3` - Arts & Entertainment
-- `7` - Business & Industrial
-- `16` - News
-- `20` - Sports
-- `32` - Science
-- More at: https://github.com/pat310/google-trends-api/wiki/Google-Trends-Categories
-
-## 🔧 Advanced Usage
-
-### Proxy Support
-
-```python
-# List of proxies
-pytrends = TrendReq(
-    proxies=['https://proxy1.com:8080', 'https://proxy2.com:8080'],
-    retries=3
-)
-
-# Dict format
-pytrends = TrendReq(
-    proxies={
-        'http': 'http://proxy.com:8080',
-        'https': 'https://proxy.com:8080'
-    }
-)
-```
-
-### Async Support
-
-```python
-import asyncio
-from pytrends_modern import AsyncTrendReq
-
-async def get_trends():
-    pytrends = AsyncTrendReq(hl='en-US')
-    await pytrends.build_payload(['Python', 'JavaScript'])
-    df = await pytrends.interest_over_time()
-    return df
-
-df = asyncio.run(get_trends())
-```
-
-### Rate Limit Handling
-
-```python
-from pytrends_modern import TrendReq
-from pytrends_modern.exceptions import TooManyRequestsError
-
-pytrends = TrendReq(retries=5, backoff_factor=0.5)
-
-try:
-    pytrends.build_payload(['keyword'])
-    df = pytrends.interest_over_time()
-except TooManyRequestsError:
-    print("Rate limited. Wait before retrying.")
-```
-
-### Batch Processing
-
-```python
-from pytrends_modern import TrendReq
-import time
-
-keywords = ['Python', 'JavaScript', 'Rust', 'Go', 'Java']
-pytrends = TrendReq()
-
-results = {}
-for kw in keywords:
-    pytrends.build_payload([kw], timeframe='today 12-m')
-    results[kw] = pytrends.interest_over_time()
-    time.sleep(2)  # Avoid rate limits
-```
-
-## 🧪 Testing
-
-```bash
-# Run tests
-pytest
-
-# With coverage
-pytest --cov=pytrends_modern
-
-# Specific test
-pytest tests/test_request.py::test_interest_over_time
-```
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Ensure all tests pass
-5. Submit a pull request
-
-## 📝 License
-
-MIT License - see LICENSE file for details
-
-## 🙏 Credits
-
-This project builds upon and combines features from:
-- [pytrends](https://github.com/GeneralMills/pytrends) - Original Google Trends API
-- [trendspyg](https://github.com/flack0x/trendspyg) - RSS feed support and modern features
-- [google-trends Flask app](https://github.com/flack0x/google-trends) - Visualization and retry logic
-
-## 📊 Changelog
-
-### Version 1.0.0 (2025-12-26)
-- Initial release
-- Combined pytrends, trendspyg, and google-trends features
-- Added async support
-- Full type hints
-- Enhanced error handling
-- CLI interface
-- Multiple export formats
-
-## 📌 Important Notes
-
-### Google API Changes
-
-Google has deprecated several trending search API endpoints. **pytrends-modern provides two working alternatives:**
-
-#### Option 1: Fast RSS Feed (Recommended for most use cases)
-```python
-from pytrends_modern import TrendsRSS
-
-rss = TrendsRSS()
-trends = rss.get_trends(geo='US')  # ~0.7s, returns 10 trends with images/articles
-```
-**Pros:** Lightning fast, includes rich media, no browser needed  
-**Cons:** Limited to 10 trends, no filtering options
-
-#### Option 2: Selenium Web Scraper (For complete data)
-```python
-from pytrends_modern import TrendsScraper
-
-scraper = TrendsScraper(headless=True)
-df = scraper.trending_searches(geo='US', hours=24)  # ~15s, returns 400+ trends
-scraper.close()
-```
-**Pros:** Complete data (400+ trends), supports categories/filters  
-**Cons:** Slower, requires Chrome browser
-
-### Working Features
-✅ All core API methods work perfectly:
-- `interest_over_time()` - Historical search trends
-- `interest_by_region()` - Geographic distribution  
-- `related_queries()` / `related_topics()` - Related searches
-- `suggestions()` - Keyword suggestions
-- And more!
-
-✅ RSS feeds for 125+ countries  
-✅ Selenium scraper for comprehensive trending data
-
-## ⚠️ Disclaimer
+## Disclaimer
 
 This is an unofficial library and is not affiliated with or endorsed by Google. Use responsibly and in accordance with Google's Terms of Service.

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pytrends-modern"
 version = "0.2.6"
-description = "Modern Google Trends API - Combining the best of pytrends, with RSS feeds, Selenium scraping, DrissionPage browser automation, and enhanced features"
+description = "Modern Google Trends API — HTTP API, RSS feeds, Camoufox browser mode, Selenium scraper, and async support"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
