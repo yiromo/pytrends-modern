@@ -131,6 +131,9 @@ pytrends = TrendReq(browser_config=config)
 # Check profile status
 python -m pytrends_modern.camoufox_setup status
 
+# Test
+python -m pytrends_modern.camoufox_setup test
+
 # Run setup (opens browser for Google login)
 python -m pytrends_modern.camoufox_setup
 

@@ -153,13 +153,131 @@ def setup_profile(profile_dir: Optional[str] = None, headless: bool = False) -> 
         return False
 
 
-def export_profile(source_dir: Optional[str] = None, dest_path: str = "./camoufox-profile.tar.gz") -> bool:
+def test_profile(profile_dir: Optional[str] = None, headless: bool = False) -> bool:
+    """
+    Open the browser with the saved profile to verify it works.
+
+    Args:
+        profile_dir: Profile directory to test, or None for default
+        headless: Run in headless mode
+
+    Returns:
+        True if browser opened successfully
+    """
+    try:
+        from camoufox.sync_api import Camoufox
+    except ImportError:
+        raise ImportError(
+            "Camoufox is required for browser mode. "
+            "Install with: pip install pytrends-modern[browser]"
+        )
+
+    if profile_dir is None:
+        profile_dir = get_default_profile_dir()
+    else:
+        profile_dir = os.path.expanduser(profile_dir)
+
+    if not is_profile_configured(profile_dir):
+        print(f"❌ No profile found at: {profile_dir}")
+        print("   Run setup first: python -m pytrends_modern.camoufox_setup")
+        return False
+
+    print(f"🦊 Opening browser with profile: {profile_dir}")
+    print("   Close the browser window when done.")
+
+    try:
+        with Camoufox(
+            persistent_context=True,
+            user_data_dir=profile_dir,
+            headless=headless,
+            humanize=True,
+            geoip=False,
+        ) as context:
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto("https://trends.google.com/", wait_until="domcontentloaded", timeout=30000)
+            print(f"✅ Browser opened. Page title: {page.title()}")
+            input("\nPress Enter to close the browser...")
+        return True
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
+
+
+def clean_profile(profile_dir: Optional[str] = None) -> int:
+    """
+    Remove cache and non-essential data from the profile to reduce export size.
+    Keeps only what's needed for Google login (cookies, prefs, storage).
+
+    Args:
+        profile_dir: Profile directory to clean, or None for default
+
+    Returns:
+        Number of bytes freed
+    """
+    import shutil
+
+    if profile_dir is None:
+        profile_dir = get_default_profile_dir()
+    else:
+        profile_dir = os.path.expanduser(profile_dir)
+
+    if not os.path.exists(profile_dir):
+        return 0
+
+    # Directories to delete entirely (pure cache/junk, not needed for login)
+    junk_dirs = [
+        'cache2',
+        'thumbnails',
+        'startupCache',
+        'crashes',
+        'minidumps',
+        'datareporting',
+        'saved-telemetry-pings',
+        'healthreport',
+        'security_state',
+        'shader-cache',
+        'gmp-clearkey',
+        'gmp-widevinecdm',
+    ]
+
+    # Files to delete (large but not needed for session)
+    junk_files = [
+        'places.sqlite',       # browsing history
+        'favicons.sqlite',     # favicons cache
+        'webappsstore.sqlite', # web storage (non-login)
+        'formhistory.sqlite',  # form history
+    ]
+
+    freed = 0
+
+    for name in junk_dirs:
+        path = os.path.join(profile_dir, name)
+        if os.path.isdir(path):
+            size = sum(
+                os.path.getsize(os.path.join(dp, f))
+                for dp, _, files in os.walk(path)
+                for f in files
+            )
+            shutil.rmtree(path, ignore_errors=True)
+            freed += size
+
+    for name in junk_files:
+        path = os.path.join(profile_dir, name)
+        if os.path.isfile(path):
+            freed += os.path.getsize(path)
+            os.remove(path)
+
+    return freed
+
+
+def export_profile(source_dir: Optional[str] = None, dest_path: str = "./camoufox-profile.tar.gz", clean: bool = True) -> bool:
     """
     Export profile to a tar.gz file for portability (Docker, other machines, etc.)
     
     Args:
         source_dir: Source profile directory, or None for default
         dest_path: Destination file path for the exported profile
+        clean: Remove cache/history before exporting to reduce file size (default: True)
         
     Returns:
         True if export successful
@@ -178,6 +296,11 @@ def export_profile(source_dir: Optional[str] = None, dest_path: str = "./camoufo
     try:
         print(f"📦 Exporting profile from: {source_dir}")
         print(f"📁 To: {dest_path}")
+
+        if clean:
+            print("🧹 Cleaning cache and non-essential data...")
+            freed = clean_profile(source_dir)
+            print(f"   Freed: {freed / 1024 / 1024:.2f} MB")
         
         with tarfile.open(dest_path, "w:gz") as tar:
             tar.add(source_dir, arcname=os.path.basename(source_dir))
@@ -276,6 +399,13 @@ if __name__ == "__main__":
         
         if command == "status":
             print_profile_status()
+        elif command == "test":
+            success = test_profile()
+            sys.exit(0 if success else 1)
+        elif command == "clean":
+            freed = clean_profile()
+            print(f"🧹 Cleaned profile. Freed: {freed / 1024 / 1024:.2f} MB")
+            sys.exit(0)
         elif command == "export":
             dest = sys.argv[2] if len(sys.argv) > 2 else "./camoufox-profile.tar.gz"
             success = export_profile(dest_path=dest)
@@ -292,6 +422,8 @@ if __name__ == "__main__":
             print("\nUsage:")
             print("  python -m pytrends_modern.camoufox_setup          # Run setup")
             print("  python -m pytrends_modern.camoufox_setup status   # Check status")
+            print("  python -m pytrends_modern.camoufox_setup test     # Open browser to test profile")
+            print("  python -m pytrends_modern.camoufox_setup clean    # Remove cache/junk to free space")
             print("  python -m pytrends_modern.camoufox_setup export [path]  # Export profile")
             print("  python -m pytrends_modern.camoufox_setup import <path>  # Import profile")
             sys.exit(1)
