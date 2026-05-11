@@ -47,17 +47,231 @@ def is_profile_configured(profile_dir: Optional[str] = None) -> bool:
     return False
 
 
-def setup_profile(profile_dir: Optional[str] = None, headless: bool = False) -> bool:
+def _resolve_google_password(config_password: Optional[str] = None) -> Optional[str]:
+    """Resolve Google password from config param or environment variable."""
+    return config_password or os.environ.get("GOOGLE_ACC_PASSWORD")
+
+
+def _find_sign_in_button(page) -> bool:
+    """
+    Check if a 'Sign in' link is present on the page.
+
+    Checks for aria-label in multiple languages:
+    - "Sign in" (English)
+    - "Anmelden" (German)
+    - "Войти" (Russian)
+
+    Uses CSS selectors first, falls back to XPath.
+
+    Returns:
+        True if sign-in button found and visible, False otherwise.
+    """
+    sign_in_labels = ["Sign in", "Anmelden", "Войти"]
+    for label in sign_in_labels:
+        try:
+            locator = page.locator(f'a[aria-label="{label}"]')
+            if locator.count() > 0 and locator.first.is_visible():
+                return True
+        except Exception:
+            pass
+
+    try:
+        xpath = '/html/body/div[3]/header/div[2]/div[3]/div[1]/a'
+        locator = page.locator(f'xpath={xpath}')
+        if locator.count() > 0:
+            text_content = locator.first.text_content()
+            if text_content and any(
+                label.lower() in text_content.lower() for label in sign_in_labels
+            ):
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _click_sign_in_button(page) -> bool:
+    """Click the 'Sign in' button on Google Trends page."""
+    sign_in_labels = ["Sign in", "Anmelden", "Войти"]
+    for label in sign_in_labels:
+        try:
+            locator = page.locator(f'a[aria-label="{label}"]')
+            if locator.count() > 0 and locator.first.is_visible():
+                locator.first.click()
+                return True
+        except Exception:
+            pass
+
+    try:
+        xpath = '/html/body/div[3]/header/div[2]/div[3]/div[1]/a'
+        locator = page.locator(f'xpath={xpath}')
+        if locator.count() > 0:
+            locator.first.click()
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _click_first_account(page, timeout: float = 5.0) -> bool:
+    """Click the first account in the Google account chooser."""
+    try:
+        account_xpath = (
+            '/html/body/div[2]/div[1]/div[1]/div[2]/c-wiz/main'
+            '/div[2]/div/div/div/span/section/div/div/div/div/ul/li[1]'
+        )
+        first_account = page.locator(f'xpath={account_xpath}')
+        first_account.wait_for(state="visible", timeout=timeout * 1000)
+        first_account.click()
+        return True
+    except Exception:
+        pass
+
+    try:
+        list_items = page.locator('ul li')
+        if list_items.count() > 0:
+            list_items.first.click()
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _fill_password(page, password: str, timeout: float = 5.0) -> bool:
+    """Fill the password input field."""
+    try:
+        pw_input = page.locator('input[type="password"]')
+        pw_input.wait_for(state="visible", timeout=timeout * 1000)
+        pw_input.fill(password)
+        return True
+    except Exception:
+        pass
+
+    try:
+        pw_xpath = (
+            '/html/body/div[2]/div[1]/div[1]/div[2]/c-wiz/main'
+            '/div[2]/div/div/div/span/section[2]/div/div/div[1]'
+            '/div[1]/div/div/div/div/div[1]/div/div[1]/input'
+        )
+        pw_input = page.locator(f'xpath={pw_xpath}')
+        pw_input.wait_for(state="visible", timeout=timeout * 1000)
+        pw_input.fill(password)
+        return True
+    except Exception:
+        pass
+
+    return False
+
+
+def _click_next_button(page, timeout: float = 5.0) -> bool:
+    """Click the 'Next' / 'Weiter' button after entering password."""
+    next_labels = ["Next", "Weiter", "Далее"]
+    for label in next_labels:
+        try:
+            btn = page.locator(f'button:has-text("{label}")')
+            if btn.count() > 0:
+                btn.first.click()
+                return True
+        except Exception:
+            pass
+
+    try:
+        next_xpath = (
+            '/html/body/div[2]/div[1]/div[1]/div[2]/c-wiz/main'
+            '/div[3]/div/div[1]/div/div/button/span'
+        )
+        btn = page.locator(f'xpath={next_xpath}')
+        btn.wait_for(state="visible", timeout=timeout * 1000)
+        parent_btn = btn.locator('xpath=..')
+        parent_btn.click()
+        return True
+    except Exception:
+        pass
+
+    try:
+        btn = page.locator('button div[role="button"]')
+        if btn.count() > 0:
+            btn.first.click()
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def auto_google_sign_in(page, password: str, step_timeout: float = 5.0) -> bool:
+    """
+    Automatically sign in to Google if a 'Sign in' button is detected.
+
+    This function checks if the user is logged in by looking for the sign-in
+    link on Google Trends. If found, it performs the full login flow:
+    1. Click "Sign in" button
+    2. Select first account
+    3. Enter password
+    4. Click "Next"
+
+    If no sign-in button is found, the user is already logged in and
+    the function returns True immediately.
+
+    Args:
+        page: Playwright Page object (from Camoufox context).
+        password: Google account password.
+        step_timeout: Timeout in seconds for each step (default: 5.0).
+
+    Returns:
+        True if sign-in completed successfully or user was already signed in.
+
+    Raises:
+        Exception: If a required step fails (with descriptive message).
+    """
+    if not _find_sign_in_button(page):
+        return True
+
+    if not _click_sign_in_button(page):
+        raise Exception("Auto sign-in failed: Could not click 'Sign in' button")
+    page.wait_for_timeout(1500)
+
+    if not _click_first_account(page, timeout=step_timeout):
+        raise Exception("Auto sign-in failed: Could not select account from the list")
+    page.wait_for_timeout(1500)
+
+    if not _fill_password(page, password, timeout=step_timeout):
+        raise Exception("Auto sign-in failed: Could not find or fill password input")
+    page.wait_for_timeout(500)
+
+    if not _click_next_button(page, timeout=step_timeout):
+        raise Exception("Auto sign-in failed: Could not click 'Next' button after password")
+    page.wait_for_timeout(1500)
+
+    if _find_sign_in_button(page):
+        raise Exception(
+            "Auto sign-in failed: 'Sign in' button still present after login. "
+            "The password may be incorrect or additional verification is required."
+        )
+
+    return True
+
+
+def setup_profile(
+    profile_dir: Optional[str] = None,
+    headless: bool = False,
+    google_sign_in: bool = False,
+    google_password: Optional[str] = None,
+) -> bool:
     """
     Interactive setup: Open browser for user to log in to Google
-    
+
     Args:
         profile_dir: Custom profile directory, or None for default
         headless: Run in headless mode (not recommended for first setup)
-        
+        google_sign_in: Automatically sign in using provided password
+        google_password: Google account password (falls back to GOOGLE_ACC_PASSWORD env var)
+
     Returns:
         True if setup completed successfully
-        
+
     Raises:
         ImportError: If Camoufox is not installed
     """
@@ -78,26 +292,38 @@ def setup_profile(profile_dir: Optional[str] = None, headless: bool = False) -> 
     print("🔧 Camoufox Profile Setup for pytrends-modern")
     print("=" * 70)
     print(f"\n📁 Profile directory: {profile_dir}")
-    
+
+    resolved_password = _resolve_google_password(google_password) if google_sign_in else None
+    if google_sign_in and not resolved_password:
+        print("\n❌ Error: google_sign_in=True but no password provided.")
+        print("   Set google_password parameter or GOOGLE_ACC_PASSWORD env var.")
+        return False
+
     if is_profile_configured(profile_dir):
         print("✓ Profile already exists")
-        response = input("\nReconfigure profile? This will open the browser again (y/N): ")
-        if response.lower() != 'y':
-            print("Setup cancelled.")
-            return False
-    
-    print("\n📖 Instructions:")
-    print("1. Browser will open to Google Trends")
-    print("2. Log in to your Google account")
-    print("3. Once logged in and page loads, press Enter here")
-    print("4. Your login will be saved for future use")
-    print("\n⚠️  IMPORTANT: Browser mode has limitations:")
-    print("   - Only 1 keyword at a time (no comparisons)")
-    print("   - Only 'today 1-m' timeframe")
-    print("   - Only WORLDWIDE region")
-    print()
-    
-    input("Press Enter to open browser...")
+        if google_sign_in:
+            print("   Checking if Google session is still valid...")
+        else:
+            response = input("\nReconfigure profile? This will open the browser again (y/N): ")
+            if response.lower() != 'y':
+                print("Setup cancelled.")
+                return False
+
+    if google_sign_in:
+        print("\n🤖 Auto sign-in enabled")
+        print("   Browser will sign in automatically using provided credentials.")
+    else:
+        print("\n📖 Instructions:")
+        print("1. Browser will open to Google Trends")
+        print("2. Log in to your Google account")
+        print("3. Once logged in and page loads, press Enter here")
+        print("4. Your login will be saved for future use")
+        print("\n⚠️  IMPORTANT: Browser mode has limitations:")
+        print("   - Only 1 keyword at a time (no comparisons)")
+        print("   - Only 'today 1-m' timeframe")
+        print("   - Only WORLDWIDE region")
+        print()
+        input("Press Enter to open browser...")
     
     try:
         with Camoufox(
@@ -106,12 +332,11 @@ def setup_profile(profile_dir: Optional[str] = None, headless: bool = False) -> 
             headless=headless,
             humanize=True,
             os='linux',
-            geoip=True,
+            geoip=False,
         ) as context:
             page = context.pages[0] if context.pages else context.new_page()
             
             print("\n🌐 Opening Google Trends...")
-            print("   Please log in to your Google account")
             
             # Navigate to Google Trends
             page.goto(
@@ -126,13 +351,22 @@ def setup_profile(profile_dir: Optional[str] = None, headless: bool = False) -> 
                 print("   You may need to log in or solve a CAPTCHA")
             else:
                 print(f"✓ Page loaded: {title}")
-            
-            print("\n📋 Please:")
-            print("   1. Log in to Google if not already logged in")
-            print("   2. Make sure the page loads correctly")
-            print("   3. Then come back here and press Enter")
-            
-            input("\nPress Enter when done (browser will close)...")
+
+            if google_sign_in and resolved_password:
+                try:
+                    auto_google_sign_in(page, resolved_password)
+                    print("✅ Auto sign-in completed successfully")
+                except Exception as e:
+                    print(f"❌ Auto sign-in failed: {e}")
+                    print("   Falling back to manual login...")
+                    google_sign_in = False
+
+            if not google_sign_in:
+                print("\n📋 Please:")
+                print("   1. Log in to Google if not already logged in")
+                print("   2. Make sure the page loads correctly")
+                print("   3. Then come back here and press Enter")
+                input("\nPress Enter when done (browser will close)...")
             
         # Verify profile was created
         if is_profile_configured(profile_dir):
@@ -391,42 +625,60 @@ def print_profile_status(profile_dir: Optional[str] = None):
 
 
 if __name__ == "__main__":
-    """Run setup when called as a module"""
+    import argparse
     import sys
-    
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-        
-        if command == "status":
-            print_profile_status()
-        elif command == "test":
-            success = test_profile()
-            sys.exit(0 if success else 1)
-        elif command == "clean":
-            freed = clean_profile()
-            print(f"🧹 Cleaned profile. Freed: {freed / 1024 / 1024:.2f} MB")
-            sys.exit(0)
-        elif command == "export":
-            dest = sys.argv[2] if len(sys.argv) > 2 else "./camoufox-profile.tar.gz"
-            success = export_profile(dest_path=dest)
-            sys.exit(0 if success else 1)
-        elif command == "import":
-            if len(sys.argv) < 3:
-                print("❌ Usage: python -m pytrends_modern.camoufox_setup import <source.tar.gz>")
-                sys.exit(1)
-            source = sys.argv[2]
-            success = import_profile(source)
-            sys.exit(0 if success else 1)
-        else:
-            print(f"❌ Unknown command: {command}")
-            print("\nUsage:")
-            print("  python -m pytrends_modern.camoufox_setup          # Run setup")
-            print("  python -m pytrends_modern.camoufox_setup status   # Check status")
-            print("  python -m pytrends_modern.camoufox_setup test     # Open browser to test profile")
-            print("  python -m pytrends_modern.camoufox_setup clean    # Remove cache/junk to free space")
-            print("  python -m pytrends_modern.camoufox_setup export [path]  # Export profile")
-            print("  python -m pytrends_modern.camoufox_setup import <path>  # Import profile")
+
+    parser = argparse.ArgumentParser(description="Camoufox profile setup for pytrends-modern")
+    subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser("status", help="Check profile status")
+
+    subparsers.add_parser("test", help="Open browser to test profile")
+
+    subparsers.add_parser("clean", help="Remove cache/junk to free space")
+
+    export_parser = subparsers.add_parser("export", help="Export profile to tar.gz")
+    export_parser.add_argument("path", nargs="?", default="./camoufox-profile.tar.gz", help="Destination path")
+
+    import_parser = subparsers.add_parser("import_profile", help="Import profile from tar.gz")
+    import_parser.add_argument("path", help="Source tar.gz file")
+
+    auto_parser = subparsers.add_parser("auto-signin", help="Auto sign-in with Google password")
+    auto_parser.add_argument("--password", "-p", default=None, help="Google password (or set GOOGLE_ACC_PASSWORD env var)")
+    auto_parser.add_argument("--headless", action="store_true", help="Run in headless mode")
+
+    subparsers.add_parser("setup", help="Interactive manual setup")
+
+    args = parser.parse_args()
+
+    if args.command == "status":
+        print_profile_status()
+    elif args.command == "test":
+        success = test_profile()
+        sys.exit(0 if success else 1)
+    elif args.command == "clean":
+        freed = clean_profile()
+        print(f"🧹 Cleaned profile. Freed: {freed / 1024 / 1024:.2f} MB")
+        sys.exit(0)
+    elif args.command == "export":
+        success = export_profile(dest_path=args.path)
+        sys.exit(0 if success else 1)
+    elif args.command == "import_profile":
+        success = import_profile(args.path)
+        sys.exit(0 if success else 1)
+    elif args.command == "auto-signin":
+        password = args.password or os.environ.get("GOOGLE_ACC_PASSWORD")
+        if not password:
+            print("❌ No password provided. Use --password or set GOOGLE_ACC_PASSWORD env var.")
             sys.exit(1)
-    else:
+        success = setup_profile(
+            google_sign_in=True,
+            google_password=password,
+            headless=args.headless,
+        )
+        sys.exit(0 if success else 1)
+    elif args.command == "setup":
         success = setup_profile()
         sys.exit(0 if success else 1)
+    else:
+        parser.print_help()

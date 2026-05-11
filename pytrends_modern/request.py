@@ -217,15 +217,16 @@ class TrendReq:
                 "Install with: pip install pytrends-modern[browser]"
             )
         
-        # Prepare browser options
         import os
         user_data_dir = os.path.expanduser(
             self.browser_config.user_data_dir or "~/.config/camoufox-pytrends-profile"
         )
         
-        # Check if profile is configured (has Google login)
         from pytrends_modern.camoufox_setup import is_profile_configured
-        if not is_profile_configured(user_data_dir):
+        profile_ready = is_profile_configured(user_data_dir)
+
+        google_sign_in_enabled = getattr(self.browser_config, 'google_sign_in', False)
+        if not profile_ready and not google_sign_in_enabled:
             raise exceptions.BrowserError(
                 f"Camoufox profile not configured at: {user_data_dir}\n"
                 "You must set up your Google account login first:\n\n"
@@ -236,7 +237,19 @@ class TrendReq:
                 "This will open a browser for you to log in to Google."
             )
         
-        # Proxy configuration (if provided)
+        if google_sign_in_enabled:
+            from pytrends_modern.camoufox_setup import _resolve_google_password
+            self._google_password = _resolve_google_password(
+                getattr(self.browser_config, 'google_password', None)
+            )
+            if not self._google_password:
+                raise exceptions.ConfigurationError(
+                    "google_sign_in=True but no password provided. "
+                    "Set google_password in BrowserConfig or GOOGLE_ACC_PASSWORD env var."
+                )
+        else:
+            self._google_password = None
+        
         proxy_config = None
         if self.browser_config.proxy_server:
             proxy_config = {
@@ -247,12 +260,7 @@ class TrendReq:
             if self.browser_config.proxy_password:
                 proxy_config["password"] = self.browser_config.proxy_password
         
-        # Initialize Camoufox with persistent context
         try:
-            # Note: Camoufox automatically generates BrowserForge fingerprints
-            # based on the 'os' parameter. No need to manually pass fingerprints.
-            
-            # Camoufox() returns a context manager, we need to use __enter__() to get the context
             camoufox_manager = Camoufox(
                 persistent_context=self.browser_config.persistent_context,
                 user_data_dir=user_data_dir if self.browser_config.persistent_context else None,
@@ -264,19 +272,23 @@ class TrendReq:
                 config=self.browser_config.custom_config if self.browser_config.custom_config else None
             )
             
-            # Enter the context manager to get the browser context
-            self.browser = camoufox_manager  # Store manager for cleanup
+            self.browser = camoufox_manager
             self.browser_context = camoufox_manager.__enter__()
             
-            # Use existing page if available (avoid opening 2 tabs)
             if self.browser_context.pages:
                 self.browser_page = self.browser_context.pages[0]
             else:
                 self.browser_page = self.browser_context.new_page()
             
-            # Set up network interception
             self.browser_page.on("response", self._handle_network_response)
+
+            if not profile_ready and google_sign_in_enabled and self._google_password:
+                self._ensure_signed_in()
             
+        except exceptions.BrowserError:
+            raise
+        except exceptions.ConfigurationError:
+            raise
         except Exception as e:
             raise exceptions.BrowserError(f"Failed to initialize Camoufox: {e}")
     
@@ -284,13 +296,41 @@ class TrendReq:
         """Close browser if open"""
         if self.browser:
             try:
-                # Exit the context manager
                 self.browser.__exit__(None, None, None)
             except Exception:
                 pass
             self.browser = None
             self.browser_context = None
             self.browser_page = None
+    
+    def _ensure_signed_in(self) -> None:
+        """
+        Navigate to Google Trends and auto sign-in if needed.
+
+        Only runs when google_sign_in=True. Navigates to Google Trends,
+        checks for 'Sign in' button, and performs automated login if found.
+        If already signed in, returns immediately.
+        """
+        if not self.browser_page:
+            raise exceptions.BrowserError("Browser not initialized")
+
+        password = getattr(self, '_google_password', None)
+        if not password:
+            return
+
+        try:
+            self.browser_page.goto(
+                "https://trends.google.com/trends/explore?q=Python&hl=en-GB",
+                wait_until='networkidle',
+                timeout=60000,
+            )
+            import time
+            time.sleep(1)
+
+            from pytrends_modern.camoufox_setup import auto_google_sign_in
+            auto_google_sign_in(self.browser_page, password)
+        except Exception as e:
+            raise exceptions.BrowserError(f"Auto sign-in failed: {e}")
     
     def _handle_network_response(self, response) -> None:
         """
@@ -309,11 +349,11 @@ class TrendReq:
             # Get response body
             body = response.body()
             
-            # Parse the response (remove Google's JSONP prefix - exactly 5 bytes)
+# Parse the response (remove Google's JSONP prefix
             if body.startswith(b")]}'\n"):
                 body = body[5:]
-            elif body.startswith(b")]}'"):
-                body = body[5:]
+            elif body.startswith(b")]}'"): 
+                body = body[4:]
             
             data = json.loads(body)
             
@@ -377,14 +417,25 @@ class TrendReq:
         url = base_url + "&hl=en-GB"
         
         try:
-            # Navigate and wait for network idle
             self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
             
-            # Give extra time for any delayed API calls
             import time
             time.sleep(2)
+
+            if getattr(self.browser_config, 'google_sign_in', False):
+                from pytrends_modern.camoufox_setup import _find_sign_in_button
+                password = getattr(self, '_google_password', None)
+                if _find_sign_in_button(self.browser_page) and password:
+                    from pytrends_modern.camoufox_setup import auto_google_sign_in
+                    auto_google_sign_in(self.browser_page, password)
+                    time.sleep(1)
+                    self.browser_responses_cache.clear()
+                    self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
+                    time.sleep(2)
             
         except Exception as e:
+            if "Auto sign-in failed" in str(e):
+                raise exceptions.BrowserError(str(e))
             raise exceptions.BrowserError(f"Failed to navigate to Google Trends: {e}")
     
     def _parse_api_response(self, response_text: str) -> Dict:

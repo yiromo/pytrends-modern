@@ -38,6 +38,11 @@ class BrowserConfig:
                   - 'today 1-m': Past month
                   - 'today 12-m': Past 12 months
         youtube: Search YouTube instead of Google Search (default: False)
+        google_sign_in: Automatically sign in to Google if not logged in (default: False)
+                       When True, detects "Sign in" button and auto-completes login.
+                       Password can be set via google_password or GOOGLE_ACC_PASSWORD env var.
+        google_password: Google account password for auto sign-in.
+                        Falls back to GOOGLE_ACC_PASSWORD environment variable if not set.
     
     Example:
         >>> from pytrends_modern import TrendReq, BrowserConfig
@@ -73,6 +78,8 @@ class BrowserConfig:
         custom_config: Optional[Dict[str, Any]] = None,
         timeframe: str = 'today 1-m',
         youtube: bool = False,
+        google_sign_in: bool = False,
+        google_password: Optional[str] = None,
     ):
         self.headless = headless
         self.proxy_server = proxy_server
@@ -89,4 +96,6 @@ class BrowserConfig:
         self.custom_config = custom_config or {}
         self.timeframe = timeframe
         self.youtube = youtube
+        self.google_sign_in = google_sign_in
+        self.google_password = google_password
 
