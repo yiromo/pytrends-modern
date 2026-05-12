@@ -5,6 +5,16 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.8] - 2026-05-13
+
+### Added
+- **SVG Graph Scraping Fallback** — when Google returns 429/500 and the API network
+  responses are empty, `interest_over_time()` now automatically falls back to scraping
+  the SVG chart rendered in the browser. Parses the `<path d="M...">` coordinates and
+  maps them to dates/values using chart bounds and axis labels. Works for all timeframes
+  (past hour, past day, past month, past 12 months, past 5 years) and search types
+  (Google Search, YouTube, etc.). Both sync and async modes supported.
+
 ## [0.2.7] - 2026-05-12
 
 ### Fixed

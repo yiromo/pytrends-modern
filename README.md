@@ -83,6 +83,8 @@ df = pytrends.interest_over_time()
 
 > **Note:** Browser mode automatically uses the legacy Google Trends UI (`&legacy` parameter) for more reliable API responses and consistent behavior.
 
+> **SVG Fallback:** When Google returns 429/500 errors and the API network responses are empty, `interest_over_time()` automatically falls back to scraping the SVG chart rendered in the browser. This extracts approximate values (0–100) from the chart's path coordinates, so data may be slightly less precise than the API response but still usable.
+
 ### Auto Google Sign-In
 
 Automate the entire login flow — no manual interaction needed. Password is read from `BrowserConfig(google_password=...)` or the `GOOGLE_ACC_PASSWORD` environment variable.

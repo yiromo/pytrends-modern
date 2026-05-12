@@ -300,6 +300,95 @@ class AsyncTrendReq:
                 raise exceptions.BrowserError(str(e))
             raise exceptions.BrowserError(f"Failed to navigate to Google Trends: {e}")
     
+    async def _scrape_interest_over_time_from_svg(self) -> pd.DataFrame:
+        """
+        Scrape interest over time data from the SVG chart (async).
+
+        Fallback when the API network responses are empty (429/500 from Google).
+        """
+        import re
+        from datetime import datetime, timedelta
+
+        try:
+            page = self.browser_page
+
+            chart_svg = page.locator('svg[aria-label]')
+            if await chart_svg.count() == 0:
+                raise exceptions.ResponseError("No SVG chart found on page")
+
+            path_elem = chart_svg.locator('path').first
+            d_attr = await path_elem.get_attribute('d')
+            if not d_attr:
+                raise exceptions.ResponseError("SVG path has no d attribute")
+
+            coords = [float(v) for v in re.findall(r'[\d.]+', d_attr)]
+            if len(coords) < 4:
+                raise exceptions.ResponseError("Too few coordinates in SVG path")
+            points = [(coords[i], coords[i + 1]) for i in range(0, len(coords), 2)]
+
+            clip_rect = chart_svg.locator('clipPath rect').first
+            x_left = float(await clip_rect.get_attribute('x') or '30')
+            y_top = float(await clip_rect.get_attribute('y') or '17')
+            width = float(await clip_rect.get_attribute('width') or '839')
+            height = float(await clip_rect.get_attribute('height') or '186')
+            y_bottom = y_top + height
+            x_right = x_left + width
+
+            text_elements = await chart_svg.locator('text').all()
+            text_values = []
+            for t in text_elements:
+                val = await t.text_content()
+                if val:
+                    text_values.append(val.strip().replace('\u202a', '').replace('\u202c', ''))
+
+            x_dates = []
+            for val in text_values:
+                for fmt in ('%b %d, %Y', '%B %d, %Y', '%Y-%m-%d', '%I:%M %p'):
+                    try:
+                        x_dates.append(datetime.strptime(val, fmt))
+                        break
+                    except ValueError:
+                        continue
+
+            if len(x_dates) < 2:
+                timeframe = getattr(self.browser_config, 'timeframe', 'today 1-m')
+                now = datetime.now()
+                from pytrends_modern.request import TrendReq
+                x_dates = TrendReq._timeframe_to_dates(timeframe, now)
+
+            if len(x_dates) >= 2:
+                date_start = x_dates[0]
+                date_end = x_dates[-1]
+            else:
+                date_start = datetime.now() - timedelta(days=30)
+                date_end = datetime.now()
+
+            total_span = (date_end - date_start).total_seconds()
+            keyword = self.kw_list[0] if self.kw_list else 'keyword'
+
+            rows = []
+            for x, y in points:
+                value = max(0, min(100, round((y_bottom - y) / height * 100)))
+                if total_span > 0:
+                    frac = (x - x_left) / (x_right - x_left)
+                    dt = date_start + timedelta(seconds=frac * total_span)
+                else:
+                    dt = date_start
+                rows.append({
+                    'date': dt,
+                    keyword: value,
+                    'isPartial': False,
+                })
+
+            df = pd.DataFrame(rows)
+            df = df.set_index('date').sort_index()
+            return df
+
+        except exceptions.ResponseError:
+            raise
+        except Exception as e:
+            raise exceptions.ResponseError(f"Failed to scrape SVG chart: {e}")
+    
     def _parse_multiline_response(self, data: Dict) -> pd.DataFrame:
         """Parse multiline (interest over time) API response"""
         from pytrends_modern.request import TrendReq
@@ -343,9 +432,8 @@ class AsyncTrendReq:
             response_data = self.browser_responses_cache.get('interest_over_time')
             
         if not response_data:
-            raise exceptions.ResponseError("Failed to capture interest_over_time API response")
+            return await self._scrape_interest_over_time_from_svg()
         
-        # Parse browser response to DataFrame
         return self._parse_multiline_response(response_data)
     
     async def interest_by_region(self, inc_geo_code: bool = False) -> pd.DataFrame:
