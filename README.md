@@ -85,6 +85,36 @@ df = pytrends.interest_over_time()
 
 > **SVG Fallback:** When Google returns 429/500 errors and the API network responses are empty, `interest_over_time()` automatically falls back to scraping the SVG chart rendered in the browser. This extracts approximate values (0–100) from the chart's path coordinates, so data may be slightly less precise than the API response but still usable.
 
+### Trending Analysis (Browser Mode)
+
+Get trending topics and queries for any region, language, and Google property — **without specifying a keyword**. Navigates to the Explore page and captures the analysis data.
+
+```python
+from pytrends_modern import TrendReq, BrowserConfig
+
+config = BrowserConfig(headless=False)
+pytrends = TrendReq(browser_config=config)
+
+# YouTube trending topics in Russia (past 7 days)
+topics = pytrends.trending_analysis_topics(
+    timeframe='now 7-d', geo='RU', hl='ru', gprop='youtube'
+)
+print(topics['top'].head())
+
+# YouTube trending queries worldwide (past month)
+queries = pytrends.trending_analysis_queries(
+    timeframe='today 1-m', gprop='youtube'
+)
+print(queries['top'].head())
+
+# Google Search trending topics in Kazakhstan
+topics_kz = pytrends.trending_analysis_topics(
+    timeframe='today 1-m', geo='KZ', hl='en'
+)
+```
+
+**Parameters:** `timeframe` (e.g. `'now 7-d'`, `'today 1-m'`), `geo` (e.g. `'RU'`, `'KZ'`, empty=worldwide), `hl` (e.g. `'en'`, `'ru'`), `gprop` (e.g. `''`, `'youtube'`, `'news'`).
+
 ### Auto Google Sign-In
 
 Automate the entire login flow — no manual interaction needed. Password is read from `BrowserConfig(google_password=...)` or the `GOOGLE_ACC_PASSWORD` environment variable.

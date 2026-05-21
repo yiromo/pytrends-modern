@@ -299,7 +299,60 @@ class AsyncTrendReq:
             if "Auto sign-in failed" in str(e):
                 raise exceptions.BrowserError(str(e))
             raise exceptions.BrowserError(f"Failed to navigate to Google Trends: {e}")
-    
+
+    async def _capture_analysis_responses(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> None:
+        """
+        Navigate to the Explore page without a query and capture trending
+        analysis responses (related topics + queries) via network interception (async).
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m')
+            geo: Country code (e.g. 'RU', 'KZ') or empty for worldwide
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('', 'youtube', 'news', etc.)
+        """
+        if not self.browser_page:
+            raise exceptions.BrowserError("Browser not initialized")
+
+        await self._add_request_delay()
+        self.browser_responses_cache.clear()
+
+        import urllib.parse
+        encoded_timeframe = urllib.parse.quote(timeframe)
+        url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}"
+        if geo:
+            url += f"&geo={geo}"
+        if gprop:
+            url += f"&gprop={gprop}"
+        url += f"&hl={hl}"
+
+        try:
+            await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
+
+            import asyncio
+            await asyncio.sleep(3)
+
+            if getattr(self.browser_config, 'google_sign_in', False):
+                from pytrends_modern.camoufox_setup import _afind_sign_in_button
+                password = getattr(self, '_google_password', None)
+                if await _afind_sign_in_button(self.browser_page) and password:
+                    await self._ensure_signed_in()
+                    await asyncio.sleep(1)
+                    self.browser_responses_cache.clear()
+                    await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
+                    await asyncio.sleep(3)
+
+        except Exception as e:
+            if "Auto sign-in failed" in str(e):
+                raise exceptions.BrowserError(str(e))
+            raise exceptions.BrowserError(f"Failed to navigate to Google Trends analysis: {e}")
+
     async def _scrape_interest_over_time_from_svg(self) -> pd.DataFrame:
         """
         Scrape interest over time data from the SVG chart (async).
@@ -516,3 +569,73 @@ class AsyncTrendReq:
             raise exceptions.ResponseError("Failed to capture related_queries API response")
         
         return {keyword: self._parse_relatedsearches_response(response_data)}
+
+    async def trending_analysis_topics(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> Dict[str, Optional[pd.DataFrame]]:
+        """
+        Get trending analysis topics (async) — Explore page without query keyword.
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m')
+            geo: Country code (e.g. 'RU', 'KZ', 'US'). Empty = worldwide.
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('' for web, 'youtube', 'news', etc.)
+
+        Returns:
+            Dictionary with 'top' and 'rising' DataFrames of trending topics.
+        """
+        if not self.browser_responses_cache.get('related_topics'):
+            await self._capture_analysis_responses(timeframe, geo, hl, gprop)
+
+        response_data = self.browser_responses_cache.get('related_topics')
+
+        if not response_data:
+            await self._capture_analysis_responses(timeframe, geo, hl, gprop)
+            response_data = self.browser_responses_cache.get('related_topics')
+
+        if not response_data:
+            raise exceptions.ResponseError(
+                "Failed to capture trending analysis topics response"
+            )
+
+        return self._parse_relatedsearches_response(response_data)
+
+    async def trending_analysis_queries(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> Dict[str, Optional[pd.DataFrame]]:
+        """
+        Get trending analysis queries (async) — Explore page without query keyword.
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m')
+            geo: Country code (e.g. 'RU', 'KZ', 'US'). Empty = worldwide.
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('' for web, 'youtube', 'news', etc.)
+
+        Returns:
+            Dictionary with 'top' and 'rising' DataFrames of trending queries.
+        """
+        if not self.browser_responses_cache.get('related_queries'):
+            await self._capture_analysis_responses(timeframe, geo, hl, gprop)
+
+        response_data = self.browser_responses_cache.get('related_queries')
+
+        if not response_data:
+            await self._capture_analysis_responses(timeframe, geo, hl, gprop)
+            response_data = self.browser_responses_cache.get('related_queries')
+
+        if not response_data:
+            raise exceptions.ResponseError(
+                "Failed to capture trending analysis queries response"
+            )
+
+        return self._parse_relatedsearches_response(response_data)

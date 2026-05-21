@@ -437,7 +437,60 @@ class TrendReq:
             if "Auto sign-in failed" in str(e):
                 raise exceptions.BrowserError(str(e))
             raise exceptions.BrowserError(f"Failed to navigate to Google Trends: {e}")
-    
+
+    def _capture_analysis_responses(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> None:
+        """
+        Navigate to the Explore page without a query and capture trending
+        analysis responses (related topics + queries) via network interception.
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m')
+            geo: Country code (e.g. 'RU', 'KZ') or empty for worldwide
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('', 'youtube', 'news', etc.)
+        """
+        if not self.browser_page:
+            raise exceptions.BrowserError("Browser not initialized")
+
+        self._add_request_delay()
+        self.browser_responses_cache.clear()
+
+        import urllib.parse
+        encoded_timeframe = urllib.parse.quote(timeframe)
+        url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}"
+        if geo:
+            url += f"&geo={geo}"
+        if gprop:
+            url += f"&gprop={gprop}"
+        url += f"&hl={hl}"
+
+        try:
+            self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
+            import time
+            time.sleep(3)
+
+            if getattr(self.browser_config, 'google_sign_in', False):
+                from pytrends_modern.camoufox_setup import _find_sign_in_button
+                password = getattr(self, '_google_password', None)
+                if _find_sign_in_button(self.browser_page) and password:
+                    from pytrends_modern.camoufox_setup import auto_google_sign_in
+                    auto_google_sign_in(self.browser_page, password)
+                    time.sleep(1)
+                    self.browser_responses_cache.clear()
+                    self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
+                    time.sleep(3)
+
+        except Exception as e:
+            if "Auto sign-in failed" in str(e):
+                raise exceptions.BrowserError(str(e))
+            raise exceptions.BrowserError(f"Failed to navigate to Google Trends analysis: {e}")
+
     def _parse_api_response(self, response_text: str) -> Dict:
         """
         Parse API response from Google Trends
@@ -1539,3 +1592,111 @@ class TrendReq:
             method=self.GET_METHOD,
             trim_chars=5,
         )
+
+    def trending_analysis_topics(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> Dict[str, Optional[pd.DataFrame]]:
+        """
+        Get trending analysis topics from the Google Trends Explore page
+        without a specific query keyword. Returns top and rising topics.
+
+        Browser mode only — navigates to the Explore page and captures the
+        relatedsearches (ENTITY) API response via network interception.
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m', 'today 12-m')
+            geo: Country code (e.g. 'RU', 'KZ', 'US'). Empty = worldwide.
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('' for web, 'youtube', 'news', etc.)
+
+        Returns:
+            Dictionary with 'top' and 'rising' DataFrames of trending topics.
+            Each topic has: topic_mid, topic_title, topic_type, value, link.
+
+        Example:
+            >>> config = BrowserConfig(headless=False)
+            >>> pytrends = TrendReq(browser_config=config)
+            >>> result = pytrends.trending_analysis_topics(
+            ...     timeframe='now 7-d', geo='RU', hl='ru', gprop='youtube'
+            ... )
+            >>> print(result['top'].head())
+        """
+        if not self.browser_mode:
+            raise exceptions.BrowserError(
+                "trending_analysis_topics() requires browser mode. "
+                "Pass BrowserConfig to TrendReq()."
+            )
+
+        if not self.browser_responses_cache.get('related_topics'):
+            self._capture_analysis_responses(timeframe, geo, hl, gprop)
+
+        response_data = self.browser_responses_cache.get('related_topics')
+
+        if not response_data:
+            self._capture_analysis_responses(timeframe, geo, hl, gprop)
+            response_data = self.browser_responses_cache.get('related_topics')
+
+        if not response_data:
+            raise exceptions.ResponseError(
+                "Failed to capture trending analysis topics response"
+            )
+
+        return self._parse_relatedsearches_response(response_data)
+
+    def trending_analysis_queries(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> Dict[str, Optional[pd.DataFrame]]:
+        """
+        Get trending analysis queries from the Google Trends Explore page
+        without a specific query keyword. Returns top and rising queries.
+
+        Browser mode only — navigates to the Explore page and captures the
+        relatedsearches (QUERY) API response via network interception.
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m', 'today 12-m')
+            geo: Country code (e.g. 'RU', 'KZ', 'US'). Empty = worldwide.
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('' for web, 'youtube', 'news', etc.)
+
+        Returns:
+            Dictionary with 'top' and 'rising' DataFrames of trending queries.
+            Each query has: query, value, link.
+
+        Example:
+            >>> config = BrowserConfig(headless=False)
+            >>> pytrends = TrendReq(browser_config=config)
+            >>> result = pytrends.trending_analysis_queries(
+            ...     timeframe='now 7-d', geo='RU', hl='ru', gprop='youtube'
+            ... )
+            >>> print(result['top'].head())
+        """
+        if not self.browser_mode:
+            raise exceptions.BrowserError(
+                "trending_analysis_queries() requires browser mode. "
+                "Pass BrowserConfig to TrendReq()."
+            )
+
+        if not self.browser_responses_cache.get('related_queries'):
+            self._capture_analysis_responses(timeframe, geo, hl, gprop)
+
+        response_data = self.browser_responses_cache.get('related_queries')
+
+        if not response_data:
+            self._capture_analysis_responses(timeframe, geo, hl, gprop)
+            response_data = self.browser_responses_cache.get('related_queries')
+
+        if not response_data:
+            raise exceptions.ResponseError(
+                "Failed to capture trending analysis queries response"
+            )
+
+        return self._parse_relatedsearches_response(response_data)

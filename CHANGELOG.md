@@ -5,6 +5,19 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.9] - 2026-05-22
+
+### Added
+- **Trending Analysis** — new browser-mode methods `trending_analysis_topics()` and
+  `trending_analysis_queries()` that navigate to the Google Trends Explore page
+  *without* a query keyword and capture the trending topics/queries for any
+  combination of timeframe, geo, language, and Google property.
+  - `timeframe` parameter: `'now 7-d'`, `'today 1-m'`, `'today 12-m'`, etc.
+  - `geo` parameter: `'RU'`, `'KZ'`, `'US'`, etc. (empty = worldwide)
+  - `hl` parameter: `'en'`, `'ru'`, etc.
+  - `gprop` parameter: `''` (web), `'youtube'`, `'news'`, etc.
+  - Both sync (`TrendReq`) and async (`AsyncTrendReq`) versions.
+
 ## [0.2.8] - 2026-05-13
 
 ### Added
