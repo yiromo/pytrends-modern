@@ -95,21 +95,19 @@ from pytrends_modern import TrendReq, BrowserConfig
 config = BrowserConfig(headless=False)
 pytrends = TrendReq(browser_config=config)
 
-# YouTube trending topics in Russia (past 7 days)
-topics = pytrends.trending_analysis_topics(
+# Get both topics + queries in one navigation (recommended)
+result = pytrends.trending_analysis_merged(
     timeframe='now 7-d', geo='RU', hl='ru', gprop='youtube'
 )
-print(topics['top'].head())
+print(result['topics']['top'].head())   # trending topics
+print(result['queries']['top'].head())  # trending queries
 
-# YouTube trending queries worldwide (past month)
+# Or call individually
+topics = pytrends.trending_analysis_topics(
+    timeframe='today 1-m', geo='KZ', hl='en'
+)
 queries = pytrends.trending_analysis_queries(
     timeframe='today 1-m', gprop='youtube'
-)
-print(queries['top'].head())
-
-# Google Search trending topics in Kazakhstan
-topics_kz = pytrends.trending_analysis_topics(
-    timeframe='today 1-m', geo='KZ', hl='en'
 )
 ```
 

@@ -211,11 +211,15 @@ class AsyncTrendReq:
         try:
             # Get response body (async in AsyncPlaywright)
             body = await response.body()
-            
-# Parse the response (remove Google's JSONP prefix
-            if body.startswith(b")]}'\n"):
+
+            # Remove Google's JSONP prefix
+            if body.startswith(b")]}',\n"):
+                body = body[6:]
+            elif body.startswith(b")]}',"):
                 body = body[5:]
-            elif body.startswith(b")]}'"): 
+            elif body.startswith(b")]}'\n"):
+                body = body[5:]
+            elif body.startswith(b")]}'"):
                 body = body[4:]
             
             data = json.loads(body)
@@ -639,3 +643,50 @@ class AsyncTrendReq:
             )
 
         return self._parse_relatedsearches_response(response_data)
+
+    async def trending_analysis_merged(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> Dict[str, Dict[str, Optional[pd.DataFrame]]]:
+        """
+        Get both trending topics and queries in a single browser navigation (async).
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m')
+            geo: Country code (e.g. 'RU', 'KZ', 'US'). Empty = worldwide.
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('' for web, 'youtube', 'news', etc.)
+
+        Returns:
+            Dictionary with 'topics' and 'queries' keys, each containing
+            {'top': DataFrame, 'rising': DataFrame}.
+        """
+        has_topics = bool(self.browser_responses_cache.get('related_topics'))
+        has_queries = bool(self.browser_responses_cache.get('related_queries'))
+
+        if not has_topics or not has_queries:
+            await self._capture_analysis_responses(timeframe, geo, hl, gprop)
+
+        topics_data = self.browser_responses_cache.get('related_topics')
+        queries_data = self.browser_responses_cache.get('related_queries')
+
+        if not topics_data or not queries_data:
+            await self._capture_analysis_responses(timeframe, geo, hl, gprop)
+            topics_data = self.browser_responses_cache.get('related_topics')
+            queries_data = self.browser_responses_cache.get('related_queries')
+
+        result = {}
+        if topics_data:
+            result['topics'] = self._parse_relatedsearches_response(topics_data)
+        else:
+            result['topics'] = {"top": None, "rising": None}
+
+        if queries_data:
+            result['queries'] = self._parse_relatedsearches_response(queries_data)
+        else:
+            result['queries'] = {"top": None, "rising": None}
+
+        return result

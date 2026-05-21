@@ -344,15 +344,19 @@ class TrendReq:
         # Only process Google Trends API responses
         if '/trends/api/widgetdata/' not in url:
             return
-        
+
         try:
             # Get response body
             body = response.body()
-            
-# Parse the response (remove Google's JSONP prefix
-            if body.startswith(b")]}'\n"):
+
+            # Parse the response (remove Google's JSONP prefix
+            if body.startswith(b")]}',\n"):
+                body = body[6:]
+            elif body.startswith(b")]}',"):
                 body = body[5:]
-            elif body.startswith(b")]}'"): 
+            elif body.startswith(b")]}'\n"):
+                body = body[5:]
+            elif body.startswith(b")]}'"):
                 body = body[4:]
             
             data = json.loads(body)
@@ -372,7 +376,7 @@ class TrendReq:
                     self.browser_responses_cache['related_queries'] = data
                     
         except Exception:
-            pass  # Silently ignore parsing errors
+            pass
     
     def _capture_all_api_responses(self, keyword: str) -> None:
         """
@@ -475,6 +479,12 @@ class TrendReq:
             import time
             time.sleep(3)
 
+            has_topics = bool(self.browser_responses_cache.get('related_topics'))
+            has_queries = bool(self.browser_responses_cache.get('related_queries'))
+
+            if not has_topics or not has_queries:
+                time.sleep(5)
+
             if getattr(self.browser_config, 'google_sign_in', False):
                 from pytrends_modern.camoufox_setup import _find_sign_in_button
                 password = getattr(self, '_google_password', None)
@@ -484,7 +494,7 @@ class TrendReq:
                     time.sleep(1)
                     self.browser_responses_cache.clear()
                     self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-                    time.sleep(3)
+                    time.sleep(5)
 
         except Exception as e:
             if "Auto sign-in failed" in str(e):
@@ -1700,3 +1710,68 @@ class TrendReq:
             )
 
         return self._parse_relatedsearches_response(response_data)
+
+    def trending_analysis_merged(
+        self,
+        timeframe: str = "today 1-m",
+        geo: str = "",
+        hl: str = "en",
+        gprop: str = "",
+    ) -> Dict[str, Dict[str, Optional[pd.DataFrame]]]:
+        """
+        Get both trending topics and trending queries in a single browser navigation.
+
+        Makes one navigation to the Explore page (no query keyword) and returns
+        both relatedsearches ENTITY (topics) and QUERY (queries) responses together.
+
+        Args:
+            timeframe: Time range (e.g. 'now 7-d', 'today 1-m', 'today 12-m')
+            geo: Country code (e.g. 'RU', 'KZ', 'US'). Empty = worldwide.
+            hl: Language code (e.g. 'en', 'ru')
+            gprop: Google property ('' for web, 'youtube', 'news', etc.)
+
+        Returns:
+            Dictionary with 'topics' and 'queries' keys, each containing
+            {'top': DataFrame, 'rising': DataFrame}.
+
+        Example:
+            >>> config = BrowserConfig(headless=False)
+            >>> pytrends = TrendReq(browser_config=config)
+            >>> result = pytrends.trending_analysis_merged(
+            ...     timeframe='now 7-d', geo='RU', hl='ru', gprop='youtube'
+            ... )
+            >>> print(result['topics']['top'].head())
+            >>> print(result['queries']['top'].head())
+        """
+        if not self.browser_mode:
+            raise exceptions.BrowserError(
+                "trending_analysis_merged() requires browser mode. "
+                "Pass BrowserConfig to TrendReq()."
+            )
+
+        has_topics = bool(self.browser_responses_cache.get('related_topics'))
+        has_queries = bool(self.browser_responses_cache.get('related_queries'))
+
+        if not has_topics or not has_queries:
+            self._capture_analysis_responses(timeframe, geo, hl, gprop)
+
+        topics_data = self.browser_responses_cache.get('related_topics')
+        queries_data = self.browser_responses_cache.get('related_queries')
+
+        if not topics_data or not queries_data:
+            self._capture_analysis_responses(timeframe, geo, hl, gprop)
+            topics_data = self.browser_responses_cache.get('related_topics')
+            queries_data = self.browser_responses_cache.get('related_queries')
+
+        result = {}
+        if topics_data:
+            result['topics'] = self._parse_relatedsearches_response(topics_data)
+        else:
+            result['topics'] = {"top": None, "rising": None}
+
+        if queries_data:
+            result['queries'] = self._parse_relatedsearches_response(queries_data)
+        else:
+            result['queries'] = {"top": None, "rising": None}
+
+        return result

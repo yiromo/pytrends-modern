@@ -5,6 +5,20 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.10] - 2026-05-22
+### Added
+- **`trending_analysis_merged()`** — convenience method that returns both topics
+  and queries from a single browser navigation, avoiding duplicate page loads
+  when you need both. Returns `{'topics': {...}, 'queries': {...}}`.
+
+### Fixed
+- **JSONP prefix parsing in `_handle_network_response`** — the browser network
+  interceptor was not stripping the `)]}',` prefix (with comma) before JSON parsing,
+  causing all `relatedsearches` API responses to silently fail. Added the comma
+  variants `b")]}',\n"` (6 bytes) and `b")]}',"` (5 bytes) to the prefix removal
+  logic in both sync and async handlers. This also fixes `related_topics()` and
+  `related_queries()` in browser mode when the API returns the comma-prefixed format.
+
 ## [0.2.9] - 2026-05-22
 
 ### Added
