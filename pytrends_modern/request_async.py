@@ -122,6 +122,8 @@ class AsyncTrendReq:
             if self.browser_config.proxy_password:
                 proxy_config["password"] = self.browser_config.proxy_password
         
+        firefox_user_prefs = getattr(self.browser_config, 'firefox_user_prefs', None)
+
         try:
             camoufox_manager = AsyncCamoufox(
                 persistent_context=self.browser_config.persistent_context,
@@ -131,7 +133,8 @@ class AsyncTrendReq:
                 os=self.browser_config.os if hasattr(self.browser_config, 'os') else 'linux',
                 geoip=self.browser_config.geoip if hasattr(self.browser_config, 'geoip') else True,
                 proxy=proxy_config,
-                config=self.browser_config.custom_config if self.browser_config.custom_config else None
+                config=self.browser_config.custom_config if self.browser_config.custom_config else None,
+                firefox_user_prefs=firefox_user_prefs if firefox_user_prefs else None,
             )
             
             self.browser = camoufox_manager

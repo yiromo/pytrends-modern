@@ -61,6 +61,15 @@ class BrowserConfig:
         ... )
     """
     
+    # Firefox preferences that disable GPU/hardware acceleration.
+    # Applied by default when running in Docker/CI environments without GPU.
+    DOCKER_GPU_PREFS: Dict[str, Any] = {
+        "gfx.webrender.software": True,
+        "layers.acceleration.disabled": True,
+        "layers.gpu-process.enabled": False,
+        "gfx.canvas.accelerated": False,
+    }
+
     def __init__(
         self,
         headless: Union[bool, str] = False,
@@ -80,6 +89,7 @@ class BrowserConfig:
         youtube: bool = False,
         google_sign_in: bool = False,
         google_password: Optional[str] = None,
+        firefox_user_prefs: Optional[Dict[str, Any]] = None,
     ):
         self.headless = headless
         self.proxy_server = proxy_server
@@ -98,4 +108,5 @@ class BrowserConfig:
         self.youtube = youtube
         self.google_sign_in = google_sign_in
         self.google_password = google_password
+        self.firefox_user_prefs = firefox_user_prefs
 

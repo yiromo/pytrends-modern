@@ -5,6 +5,15 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-05-31
+
+### Added
+- **`firefox_user_prefs` in `BrowserConfig`** — pass custom Firefox preferences
+  to Camoufox (e.g. to disable GPU/hardware acceleration in Docker/CI).
+  `BrowserConfig.DOCKER_GPU_PREFS` class constant provided as a ready-made
+  preset: `BrowserConfig(firefox_user_prefs=BrowserConfig.DOCKER_GPU_PREFS)`.
+  Applied in both sync (`TrendReq`) and async (`AsyncTrendReq`) browser init.
+
 ## [0.2.10] - 2026-05-22
 ### Added
 - **`trending_analysis_merged()`** — convenience method that returns both topics
