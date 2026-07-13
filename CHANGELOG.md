@@ -5,6 +5,25 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2026-07-14
+
+### Added
+- **Identifier-page fallback in auto sign-in** — when Google shows the email
+  ("identifier") page instead of the account chooser (the profile lost its
+  remembered account, e.g. after a server-side session revocation), the sign-in
+  flow now enters the account email and continues to the password step. New
+  `email` parameter on `auto_google_sign_in()` / `auto_google_sign_in_async()`
+  and `google_email` field in `BrowserConfig`. Without an email that state was
+  unrecoverable ("Could not select account from the list" forever).
+
+### Fixed
+- **`import_profile()` now replaces the destination instead of merging over
+  it.** Previously `extractall` left stale files from the prior session in
+  place — in particular sqlite `-wal`/`-shm` journals, which the next browser
+  start replays OVER the freshly imported `cookies.sqlite`, silently undoing
+  the import. Also, the destination directory name no longer has to match the
+  tar's internal root directory name.
+
 ## [0.2.11] - 2026-05-31
 
 ### Added

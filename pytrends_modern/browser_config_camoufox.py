@@ -43,6 +43,10 @@ class BrowserConfig:
                        Password can be set via google_password or GOOGLE_ACC_PASSWORD env var.
         google_password: Google account password for auto sign-in.
                         Falls back to GOOGLE_ACC_PASSWORD environment variable if not set.
+        google_email: Account email for auto sign-in. Only needed when the profile has
+                     lost its remembered account and Google shows the email ("identifier")
+                     page instead of the account chooser — without it that state is
+                     unrecoverable.
     
     Example:
         >>> from pytrends_modern import TrendReq, BrowserConfig
@@ -89,6 +93,7 @@ class BrowserConfig:
         youtube: bool = False,
         google_sign_in: bool = False,
         google_password: Optional[str] = None,
+        google_email: Optional[str] = None,
         firefox_user_prefs: Optional[Dict[str, Any]] = None,
     ):
         self.headless = headless
@@ -108,5 +113,6 @@ class BrowserConfig:
         self.youtube = youtube
         self.google_sign_in = google_sign_in
         self.google_password = google_password
+        self.google_email = google_email
         self.firefox_user_prefs = firefox_user_prefs
 

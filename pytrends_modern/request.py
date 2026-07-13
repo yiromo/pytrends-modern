@@ -331,7 +331,10 @@ class TrendReq:
             time.sleep(1)
 
             from pytrends_modern.camoufox_setup import auto_google_sign_in
-            auto_google_sign_in(self.browser_page, password)
+            auto_google_sign_in(
+                self.browser_page, password,
+                email=getattr(self.browser_config, 'google_email', None),
+            )
         except Exception as e:
             raise exceptions.BrowserError(f"Auto sign-in failed: {e}")
     
@@ -434,7 +437,10 @@ class TrendReq:
                 password = getattr(self, '_google_password', None)
                 if _find_sign_in_button(self.browser_page) and password:
                     from pytrends_modern.camoufox_setup import auto_google_sign_in
-                    auto_google_sign_in(self.browser_page, password)
+                    auto_google_sign_in(
+                        self.browser_page, password,
+                        email=getattr(self.browser_config, 'google_email', None),
+                    )
                     time.sleep(1)
                     self.browser_responses_cache.clear()
                     self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
@@ -493,7 +499,10 @@ class TrendReq:
                 password = getattr(self, '_google_password', None)
                 if _find_sign_in_button(self.browser_page) and password:
                     from pytrends_modern.camoufox_setup import auto_google_sign_in
-                    auto_google_sign_in(self.browser_page, password)
+                    auto_google_sign_in(
+                        self.browser_page, password,
+                        email=getattr(self.browser_config, 'google_email', None),
+                    )
                     time.sleep(1)
                     self.browser_responses_cache.clear()
                     self.browser_page.goto(url, wait_until='networkidle', timeout=60000)

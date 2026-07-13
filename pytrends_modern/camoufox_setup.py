@@ -165,6 +165,24 @@ def _fill_password(page, password: str, timeout: float = 5.0) -> bool:
     return False
 
 
+def _fill_email(page, email: str, timeout: float = 5.0) -> bool:
+    """Fill the email input on the sign-in 'identifier' page.
+
+    Google shows this page instead of the account chooser when the profile has
+    no remembered account (e.g. the session was revoked server-side).
+    """
+    for selector in ('#identifierId', 'input[type="email"]', 'input[name="identifier"]'):
+        try:
+            email_input = page.locator(selector)
+            email_input.wait_for(state="visible", timeout=timeout * 1000)
+            email_input.fill(email)
+            return True
+        except Exception:
+            pass
+
+    return False
+
+
 def _click_next_button(page, timeout: float = 5.0) -> bool:
     """Click the 'Next' / 'Weiter' button after entering password."""
     next_labels = ["Next", "Weiter", "Далее"]
@@ -201,14 +219,18 @@ def _click_next_button(page, timeout: float = 5.0) -> bool:
     return False
 
 
-def auto_google_sign_in(page, password: str, step_timeout: float = 5.0) -> bool:
+def auto_google_sign_in(
+    page, password: str, step_timeout: float = 5.0, email: Optional[str] = None
+) -> bool:
     """
     Automatically sign in to Google if a 'Sign in' button is detected.
 
     This function checks if the user is logged in by looking for the sign-in
     link on Google Trends. If found, it performs the full login flow:
     1. Click "Sign in" button
-    2. Select first account
+    2. Select the account — from the chooser, or by entering `email` when
+       Google shows the identifier page instead (profile lost its remembered
+       account, e.g. after a server-side session revocation)
     3. Enter password
     4. Click "Next"
 
@@ -219,6 +241,9 @@ def auto_google_sign_in(page, password: str, step_timeout: float = 5.0) -> bool:
         page: Playwright Page object (from Camoufox context).
         password: Google account password.
         step_timeout: Timeout in seconds for each step (default: 5.0).
+        email: Account email for the identifier page fallback (optional but
+               strongly recommended — without it a signed-out profile cannot
+               recover).
 
     Returns:
         True if sign-in completed successfully or user was already signed in.
@@ -234,7 +259,14 @@ def auto_google_sign_in(page, password: str, step_timeout: float = 5.0) -> bool:
     page.wait_for_timeout(1500)
 
     if not _click_first_account(page, timeout=step_timeout):
-        raise Exception("Auto sign-in failed: Could not select account from the list")
+        if not email or not _fill_email(page, email, timeout=step_timeout):
+            raise Exception(
+                "Auto sign-in failed: Could not select account from the list"
+                + ("" if email else " (no account email configured for the identifier page)")
+            )
+        page.wait_for_timeout(500)
+        if not _click_next_button(page, timeout=step_timeout):
+            raise Exception("Auto sign-in failed: Could not click 'Next' after email")
     page.wait_for_timeout(1500)
 
     if not _fill_password(page, password, timeout=step_timeout):
@@ -355,6 +387,20 @@ async def _afill_password(page, password: str, timeout: float = 5.0) -> bool:
     return False
 
 
+async def _afill_email(page, email: str, timeout: float = 5.0) -> bool:
+    """Async version of _fill_email."""
+    for selector in ('#identifierId', 'input[type="email"]', 'input[name="identifier"]'):
+        try:
+            email_input = page.locator(selector)
+            await email_input.wait_for(state="visible", timeout=timeout * 1000)
+            await email_input.fill(email)
+            return True
+        except Exception:
+            pass
+
+    return False
+
+
 async def _aclick_next_button(page, timeout: float = 5.0) -> bool:
     """Async version of _click_next_button."""
     next_labels = ["Next", "Weiter", "Далее"]
@@ -391,7 +437,9 @@ async def _aclick_next_button(page, timeout: float = 5.0) -> bool:
     return False
 
 
-async def auto_google_sign_in_async(page, password: str, step_timeout: float = 5.0) -> bool:
+async def auto_google_sign_in_async(
+    page, password: str, step_timeout: float = 5.0, email: Optional[str] = None
+) -> bool:
     """
     Async version of auto_google_sign_in.
 
@@ -406,7 +454,14 @@ async def auto_google_sign_in_async(page, password: str, step_timeout: float = 5
     await page.wait_for_timeout(1500)
 
     if not await _aclick_first_account(page, timeout=step_timeout):
-        raise Exception("Auto sign-in failed: Could not select account from the list")
+        if not email or not await _afill_email(page, email, timeout=step_timeout):
+            raise Exception(
+                "Auto sign-in failed: Could not select account from the list"
+                + ("" if email else " (no account email configured for the identifier page)")
+            )
+        await page.wait_for_timeout(500)
+        if not await _aclick_next_button(page, timeout=step_timeout):
+            raise Exception("Auto sign-in failed: Could not click 'Next' after email")
     await page.wait_for_timeout(1500)
 
     if not await _afill_password(page, password, timeout=step_timeout):
@@ -732,26 +787,47 @@ def import_profile(source_path: str, dest_dir: Optional[str] = None) -> bool:
         True if import successful
     """
     import tarfile
-    
+    import tempfile
+    import shutil
+
     if dest_dir is None:
         dest_dir = get_default_profile_dir()
     else:
         dest_dir = os.path.expanduser(dest_dir)
-    
+
     if not os.path.exists(source_path):
         print(f"❌ Source file not found: {source_path}")
         return False
-    
+
     try:
         print(f"📦 Importing profile from: {source_path}")
         print(f"📁 To: {dest_dir}")
-        
-        # Create parent directory if needed
-        os.makedirs(os.path.dirname(dest_dir), exist_ok=True)
-        
-        with tarfile.open(source_path, "r:gz") as tar:
-            tar.extractall(path=os.path.dirname(dest_dir))
-        
+
+        parent = os.path.dirname(dest_dir)
+        os.makedirs(parent, exist_ok=True)
+
+        # Extract to a temp dir first: the tar's internal root directory no
+        # longer has to match dest_dir's basename.
+        with tempfile.TemporaryDirectory(dir=parent) as tmp:
+            with tarfile.open(source_path, "r:gz") as tar:
+                tar.extractall(path=tmp)
+
+            entries = os.listdir(tmp)
+            if len(entries) == 1 and os.path.isdir(os.path.join(tmp, entries[0])):
+                src_root = os.path.join(tmp, entries[0])
+            else:
+                src_root = tmp
+
+            # Replace, never merge: leftovers from a previous session (sqlite
+            # -wal/-shm journals, locks) would survive a merge and clobber the
+            # freshly imported databases on the next browser start.
+            if os.path.exists(dest_dir):
+                shutil.rmtree(dest_dir)
+            if src_root == tmp:
+                shutil.copytree(tmp, dest_dir)
+            else:
+                shutil.move(src_root, dest_dir)
+
         if is_profile_configured(dest_dir):
             print(f"✅ Profile imported successfully!")
             return True

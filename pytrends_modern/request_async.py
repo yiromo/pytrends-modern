@@ -192,7 +192,10 @@ class AsyncTrendReq:
             await asyncio.sleep(1)
 
             from pytrends_modern.camoufox_setup import auto_google_sign_in_async
-            await auto_google_sign_in_async(self.browser_page, password)
+            await auto_google_sign_in_async(
+                self.browser_page, password,
+                email=getattr(self.browser_config, 'google_email', None),
+            )
         except exceptions.BrowserError:
             raise
         except Exception as e:
