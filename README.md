@@ -1,3 +1,5 @@
+
+
 # pytrends-modern
 
 Modern Google Trends API — HTTP API, RSS feeds, browser automation, and Selenium scraping in one library.
@@ -216,6 +218,7 @@ config = BrowserConfig(
     youtube=False,            # search YouTube instead of Google
     google_sign_in=False,     # auto sign-in if session expired
     google_password=None,     # or set GOOGLE_ACC_PASSWORD env var
+    google_email=None,        # account email if profile lost remembered account
 )
 ```
 
