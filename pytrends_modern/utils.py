@@ -2,10 +2,39 @@
 Utility functions for pytrends-modern
 """
 
-from datetime import date, datetime, timedelta
-from typing import Optional, Tuple
+import re
+from datetime import date, datetime
+from typing import Optional, Tuple, TypeVar
 
 import pandas as pd
+
+_JSONP_PREFIX_TEXT = re.compile(r"^\)\]\}',?\s*")
+_JSONP_PREFIX_BYTES = re.compile(rb"^\)\]\}',?\s*")
+
+_JSONP = TypeVar("_JSONP", str, bytes)
+
+
+def strip_jsonp_prefix(payload: _JSONP) -> _JSONP:
+    """
+    Remove Google's anti-XSSI prefix from an API response body
+
+    Google Trends prefixes JSON bodies with ``)]}'`` followed by an optional
+    comma and optional whitespace. Every variant is stripped here so callers
+    never hardcode a character count.
+
+    Args:
+        payload: Raw response text or bytes
+
+    Returns:
+        The payload with the prefix removed, same type as the input
+
+    Example:
+        >>> strip_jsonp_prefix(")]}',\n{\"a\": 1}")
+        '{"a": 1}'
+    """
+    if isinstance(payload, bytes):
+        return _JSONP_PREFIX_BYTES.sub(b"", payload, count=1)
+    return _JSONP_PREFIX_TEXT.sub("", payload, count=1)
 
 
 def convert_dates_to_timeframe(start: date, stop: date) -> str:

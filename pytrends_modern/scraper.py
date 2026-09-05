@@ -42,6 +42,7 @@ class TrendsScraper:
         """
         self.headless = headless
 
+        self._owns_download_dir = download_dir is None
         if download_dir is None:
             import tempfile
 
@@ -275,14 +276,14 @@ class TrendsScraper:
                 pass
             self.driver = None
 
-        # Cleanup temp directory if we created it
-        if self.download_dir and "/tmp/" in self.download_dir:
+        if self._owns_download_dir and self.download_dir:
             import shutil
 
             try:
-                shutil.rmtree(self.download_dir)
-            except:
+                shutil.rmtree(self.download_dir, ignore_errors=True)
+            except Exception:
                 pass
+            self._owns_download_dir = False
 
     def __del__(self):
         """Cleanup on deletion"""

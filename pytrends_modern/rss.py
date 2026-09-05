@@ -67,7 +67,7 @@ class TrendsRSS:
 
         # Suggest similar matches
         all_geos = list(COUNTRIES.keys()) + list(US_STATES.keys())
-        similar = [code for code in all_geos if code.startswith(geo[0]) if len(geo) > 0][:5]
+        similar = [code for code in all_geos if code.startswith(geo[0])][:5] if geo else []
 
         error_msg = f"Invalid geo code '{geo}'."
         if similar:

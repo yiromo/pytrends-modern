@@ -2,14 +2,17 @@
 Async Google Trends API request module with Camoufox support
 """
 
+import asyncio
 import json
-from typing import Dict, Optional
-from urllib.parse import quote
+import time
+from typing import Any, Dict, Optional, Tuple
 
 import pandas as pd
 
 from pytrends_modern import exceptions
 from pytrends_modern.browser_config_camoufox import BrowserConfig
+from pytrends_modern.config import EXPLORE_URL
+from pytrends_modern.utils import strip_jsonp_prefix
 
 
 class AsyncTrendReq:
@@ -33,6 +36,16 @@ class AsyncTrendReq:
         >>> asyncio.run(main())
     """
     
+    _EXPLORE_CACHE_KEYS = (
+        "interest_over_time",
+        "interest_by_region",
+        "related_topics",
+        "related_queries",
+    )
+    _ANALYSIS_CACHE_KEYS = ("related_topics", "related_queries")
+    _EXPLORE_WAIT_SECONDS = 5.0
+    _ANALYSIS_WAIT_SECONDS = 8.0
+
     def __init__(self, browser_config: BrowserConfig):
         """
         Initialize async Google Trends request
@@ -45,6 +58,7 @@ class AsyncTrendReq:
         self.browser_context = None
         self.browser_page = None
         self.browser_responses_cache = {}
+        self._browser_cache_key: Optional[Tuple[Any, ...]] = None
         self.kw_list = []
         self._google_password = None
         
@@ -90,7 +104,11 @@ class AsyncTrendReq:
         profile_ready = is_profile_configured(user_data_dir)
 
         google_sign_in_enabled = getattr(self.browser_config, 'google_sign_in', False)
-        if not profile_ready and not google_sign_in_enabled:
+        if (
+            not profile_ready
+            and not google_sign_in_enabled
+            and self.browser_config.persistent_context
+        ):
             raise exceptions.BrowserError(
                 f"Camoufox profile not configured at: {user_data_dir}\n"
                 "You must set up your Google account login first:\n\n"
@@ -149,6 +167,7 @@ class AsyncTrendReq:
 
             if not profile_ready and google_sign_in_enabled and self._google_password:
                 await self._ensure_signed_in()
+                self.browser_responses_cache.clear()
             
         except exceptions.BrowserError:
             raise
@@ -184,11 +203,10 @@ class AsyncTrendReq:
 
         try:
             await self.browser_page.goto(
-                "https://trends.google.com/trends/explore?q=Python&legacy&hl=en-GB",
+                f"{EXPLORE_URL}?q=Python&legacy&hl=en-GB",
                 wait_until='networkidle',
                 timeout=60000,
             )
-            import asyncio
             await asyncio.sleep(1)
 
             from pytrends_modern.camoufox_setup import auto_google_sign_in_async
@@ -218,17 +236,7 @@ class AsyncTrendReq:
             # Get response body (async in AsyncPlaywright)
             body = await response.body()
 
-            # Remove Google's JSONP prefix
-            if body.startswith(b")]}',\n"):
-                body = body[6:]
-            elif body.startswith(b")]}',"):
-                body = body[5:]
-            elif body.startswith(b")]}'\n"):
-                body = body[5:]
-            elif body.startswith(b")]}'"):
-                body = body[4:]
-            
-            data = json.loads(body)
+            data = json.loads(strip_jsonp_prefix(body))
             
             # Cache by URL pattern
             if '/widgetdata/multiline' in url:
@@ -247,6 +255,52 @@ class AsyncTrendReq:
         except Exception:
             pass  # Silently ignore parsing errors
     
+    def _browser_cache_valid(self, signature: Tuple[Any, ...], key: str) -> bool:
+        """
+        Check whether the response cache holds ``key`` for the given navigation
+
+        Args:
+            signature: Identity of the navigation that must have filled the cache
+            key: Cache key to look up
+
+        Returns:
+            True if the cache was populated by that navigation and has the key
+        """
+        return self._browser_cache_key == signature and bool(
+            self.browser_responses_cache.get(key)
+        )
+
+    async def _wait_for_cached_keys(self, keys: Tuple[str, ...], timeout: float) -> bool:
+        """
+        Wait until every key is cached or the deadline passes (async)
+
+        Args:
+            keys: Cache keys to wait for
+            timeout: Maximum seconds to wait
+
+        Returns:
+            True if all keys arrived in time
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            if all(self.browser_responses_cache.get(k) for k in keys):
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            await asyncio.sleep(0.25)
+
+    async def _sign_in_on_current_page(self) -> None:
+        """Run the auto sign-in flow against whatever page is currently loaded (async)."""
+        from pytrends_modern.camoufox_setup import auto_google_sign_in_async
+
+        password = getattr(self, '_google_password', None)
+        if not password:
+            return
+        await auto_google_sign_in_async(
+            self.browser_page, password,
+            email=getattr(self.browser_config, 'google_email', None),
+        )
+
     async def _capture_all_api_responses(self, keyword: str) -> None:
         """
         Navigate once and capture ALL API responses via network interception (async)
@@ -262,6 +316,7 @@ class AsyncTrendReq:
         
         # Clear cache
         self.browser_responses_cache.clear()
+        self._browser_cache_key = ("explore", keyword)
         
         # Build URL
         import urllib.parse
@@ -276,11 +331,11 @@ class AsyncTrendReq:
         # Build URL with or without date parameter
         if timeframe == 'today 12-m':
             # Past 12 months - no date parameter needed
-            base_url = f"https://trends.google.com/trends/explore?q={encoded_keyword}"
+            base_url = f"{EXPLORE_URL}?q={encoded_keyword}"
         else:
             # Default: today 1-m or custom timeframe
             encoded_timeframe = urllib.parse.quote(timeframe)
-            base_url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}&q={encoded_keyword}"
+            base_url = f"{EXPLORE_URL}?date={encoded_timeframe}&q={encoded_keyword}"
         
         # Add YouTube property if enabled
         if youtube:
@@ -291,19 +346,21 @@ class AsyncTrendReq:
         
         try:
             await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-            
-            import asyncio
-            await asyncio.sleep(2)
+            await self._wait_for_cached_keys(
+                self._EXPLORE_CACHE_KEYS, self._EXPLORE_WAIT_SECONDS
+            )
 
             if getattr(self.browser_config, 'google_sign_in', False):
                 from pytrends_modern.camoufox_setup import _afind_sign_in_button
                 password = getattr(self, '_google_password', None)
                 if await _afind_sign_in_button(self.browser_page) and password:
-                    await self._ensure_signed_in()
+                    await self._sign_in_on_current_page()
                     await asyncio.sleep(1)
                     self.browser_responses_cache.clear()
                     await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-                    await asyncio.sleep(2)
+                    await self._wait_for_cached_keys(
+                        self._EXPLORE_CACHE_KEYS, self._EXPLORE_WAIT_SECONDS
+                    )
             
         except Exception as e:
             if "Auto sign-in failed" in str(e):
@@ -332,10 +389,11 @@ class AsyncTrendReq:
 
         await self._add_request_delay()
         self.browser_responses_cache.clear()
+        self._browser_cache_key = ("analysis", timeframe, geo, hl, gprop)
 
         import urllib.parse
         encoded_timeframe = urllib.parse.quote(timeframe)
-        url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}"
+        url = f"{EXPLORE_URL}?date={encoded_timeframe}"
         if geo:
             url += f"&geo={geo}"
         if gprop:
@@ -344,19 +402,21 @@ class AsyncTrendReq:
 
         try:
             await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-
-            import asyncio
-            await asyncio.sleep(3)
+            await self._wait_for_cached_keys(
+                self._ANALYSIS_CACHE_KEYS, self._ANALYSIS_WAIT_SECONDS
+            )
 
             if getattr(self.browser_config, 'google_sign_in', False):
                 from pytrends_modern.camoufox_setup import _afind_sign_in_button
                 password = getattr(self, '_google_password', None)
                 if await _afind_sign_in_button(self.browser_page) and password:
-                    await self._ensure_signed_in()
+                    await self._sign_in_on_current_page()
                     await asyncio.sleep(1)
                     self.browser_responses_cache.clear()
                     await self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-                    await asyncio.sleep(3)
+                    await self._wait_for_cached_keys(
+                        self._ANALYSIS_CACHE_KEYS, self._ANALYSIS_WAIT_SECONDS
+                    )
 
         except Exception as e:
             if "Auto sign-in failed" in str(e):
@@ -404,27 +464,15 @@ class AsyncTrendReq:
                 if val:
                     text_values.append(val.strip().replace('\u202a', '').replace('\u202c', ''))
 
-            x_dates = []
-            for val in text_values:
-                for fmt in ('%b %d, %Y', '%B %d, %Y', '%Y-%m-%d', '%I:%M %p'):
-                    try:
-                        x_dates.append(datetime.strptime(val, fmt))
-                        break
-                    except ValueError:
-                        continue
+            from pytrends_modern.request import TrendReq
+            x_dates = TrendReq._parse_axis_dates(text_values)
 
             if len(x_dates) < 2:
                 timeframe = getattr(self.browser_config, 'timeframe', 'today 1-m')
-                now = datetime.now()
-                from pytrends_modern.request import TrendReq
-                x_dates = TrendReq._timeframe_to_dates(timeframe, now)
+                x_dates = TrendReq._timeframe_to_dates(timeframe, datetime.now())
 
-            if len(x_dates) >= 2:
-                date_start = x_dates[0]
-                date_end = x_dates[-1]
-            else:
-                date_start = datetime.now() - timedelta(days=30)
-                date_end = datetime.now()
+            date_start = x_dates[0]
+            date_end = x_dates[-1]
 
             total_span = (date_end - date_start).total_seconds()
             keyword = self.kw_list[0] if self.kw_list else 'keyword'
@@ -482,8 +530,8 @@ class AsyncTrendReq:
         
         keyword = self.kw_list[0]
         
-        # Capture all responses if not already cached
-        if not self.browser_responses_cache:
+        # Capture all responses if not already cached for this keyword
+        if not self._browser_cache_valid(("explore", keyword), 'interest_over_time'):
             await self._capture_all_api_responses(keyword)
         
         # Get cached response
@@ -516,8 +564,8 @@ class AsyncTrendReq:
         
         keyword = self.kw_list[0]
         
-        # Capture all responses if not already cached
-        if not self.browser_responses_cache:
+        # Capture all responses if not already cached for this keyword
+        if not self._browser_cache_valid(("explore", keyword), 'interest_by_region'):
             await self._capture_all_api_responses(keyword)
         
         # Get cached response
@@ -542,8 +590,8 @@ class AsyncTrendReq:
         
         keyword = self.kw_list[0]
         
-        # Capture all responses if not already cached
-        if not self.browser_responses_cache:
+        # Capture all responses if not already cached for this keyword
+        if not self._browser_cache_valid(("explore", keyword), 'related_topics'):
             await self._capture_all_api_responses(keyword)
         
         # Get cached response
@@ -568,8 +616,8 @@ class AsyncTrendReq:
         
         keyword = self.kw_list[0]
         
-        # Capture all responses if not already cached
-        if not self.browser_responses_cache:
+        # Capture all responses if not already cached for this keyword
+        if not self._browser_cache_valid(("explore", keyword), 'related_queries'):
             await self._capture_all_api_responses(keyword)
         
         # Get cached response
@@ -599,7 +647,8 @@ class AsyncTrendReq:
         Returns:
             Dictionary with 'top' and 'rising' DataFrames of trending topics.
         """
-        if not self.browser_responses_cache.get('related_topics'):
+        signature = ("analysis", timeframe, geo, hl, gprop)
+        if not self._browser_cache_valid(signature, 'related_topics'):
             await self._capture_analysis_responses(timeframe, geo, hl, gprop)
 
         response_data = self.browser_responses_cache.get('related_topics')
@@ -634,7 +683,8 @@ class AsyncTrendReq:
         Returns:
             Dictionary with 'top' and 'rising' DataFrames of trending queries.
         """
-        if not self.browser_responses_cache.get('related_queries'):
+        signature = ("analysis", timeframe, geo, hl, gprop)
+        if not self._browser_cache_valid(signature, 'related_queries'):
             await self._capture_analysis_responses(timeframe, geo, hl, gprop)
 
         response_data = self.browser_responses_cache.get('related_queries')
@@ -670,8 +720,9 @@ class AsyncTrendReq:
             Dictionary with 'topics' and 'queries' keys, each containing
             {'top': DataFrame, 'rising': DataFrame}.
         """
-        has_topics = bool(self.browser_responses_cache.get('related_topics'))
-        has_queries = bool(self.browser_responses_cache.get('related_queries'))
+        signature = ("analysis", timeframe, geo, hl, gprop)
+        has_topics = self._browser_cache_valid(signature, 'related_topics')
+        has_queries = self._browser_cache_valid(signature, 'related_queries')
 
         if not has_topics or not has_queries:
             await self._capture_analysis_responses(timeframe, geo, hl, gprop)

@@ -113,9 +113,11 @@ queries = pytrends.trending_analysis_queries(
 
 **Parameters:** `timeframe` (e.g. `'now 7-d'`, `'today 1-m'`), `geo` (e.g. `'RU'`, `'KZ'`, empty=worldwide), `hl` (e.g. `'en'`, `'ru'`), `gprop` (e.g. `''`, `'youtube'`, `'news'`).
 
+Captured responses are cached per keyword / per parameter set: repeated calls with the same arguments reuse the last page load, and changing the keyword or any analysis parameter triggers a fresh navigation.
+
 ### Auto Google Sign-In
 
-Automate the entire login flow — no manual interaction needed. Password is read from `BrowserConfig(google_password=...)` or the `GOOGLE_ACC_PASSWORD` environment variable.
+Automate the entire login flow — no manual interaction needed. Password is read from `BrowserConfig(google_password=...)` or the `GOOGLE_ACC_PASSWORD` environment variable. Email is only needed when the profile has lost its remembered account and Google shows the email ("identifier") page instead of the account chooser — read from `BrowserConfig(google_email=...)` or `GOOGLE_ACC_EMAIL`.
 
 ```python
 from pytrends_modern import TrendReq, BrowserConfig
@@ -123,6 +125,7 @@ from pytrends_modern import TrendReq, BrowserConfig
 config = BrowserConfig(
     google_sign_in=True,
     # google_password="...",           # or set GOOGLE_ACC_PASSWORD env var
+    # google_email="...",              # or set GOOGLE_ACC_EMAIL env var
 )
 pytrends = TrendReq(browser_config=config)  # auto sign-in on first use
 pytrends.kw_list = ['Python']
@@ -133,9 +136,10 @@ Or run from the command line:
 
 ```bash
 GOOGLE_ACC_PASSWORD="your_password" python -m pytrends_modern.camoufox_setup auto-signin
+GOOGLE_ACC_PASSWORD="..." GOOGLE_ACC_EMAIL="you@gmail.com" python -m pytrends_modern.camoufox_setup auto-signin --headless
 ```
 
-Auto sign-in also works if your session expires mid-run — it will detect the "Sign in" button and re-authenticate automatically.
+Auto sign-in also works if your session expires mid-run — it will detect the "Sign in" button and re-authenticate automatically. In `--headless` mode the command fails fast instead of waiting for a manual login.
 
 ### Selenium Scraper
 
@@ -173,6 +177,7 @@ TrendReq(
     retries=3,               # Retry attempts
     backoff_factor=0.3,      # Exponential backoff multiplier
     rotate_user_agent=True,  # Rotate user agents
+    requests_args=None,      # Extra kwargs for requests (e.g. {'verify': False, 'timeout': 30})
     browser_config=None,     # BrowserConfig for Camoufox mode
 )
 ```
@@ -216,8 +221,12 @@ config = BrowserConfig(
     youtube=False,            # search YouTube instead of Google
     google_sign_in=False,     # auto sign-in if session expired
     google_password=None,     # or set GOOGLE_ACC_PASSWORD env var
+    google_email=None,        # or set GOOGLE_ACC_EMAIL env var (identifier-page fallback)
+    firefox_user_prefs=None,  # e.g. BrowserConfig.DOCKER_GPU_PREFS to disable GPU in Docker/CI
 )
 ```
+
+Set `persistent_context=False` to launch a fresh, profile-less browser each time (no saved login required).
 
 ### AsyncTrendReq
 
@@ -270,7 +279,7 @@ python -m pytrends_modern.camoufox_setup test          # test saved profile
 python -m pytrends_modern.camoufox_setup clean         # clean cache/junk
 python -m pytrends_modern.camoufox_setup export [path] # export for Docker
 python -m pytrends_modern.camoufox_setup import_profile <path>  # import profile
-python -m pytrends_modern.camoufox_setup auto-signin   # auto sign-in with password
+python -m pytrends_modern.camoufox_setup auto-signin [--email you@gmail.com] [--headless]  # auto sign-in with password
 ```
 
 ## Proxy Support

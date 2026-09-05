@@ -5,6 +5,78 @@ All notable changes to pytrends-modern will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13] - 2026-09-06
+
+### Fixed
+- **Stale browser-mode cache across keywords.** `browser_responses_cache` was
+  keyed only by response type, so after `build_payload(['Python'])` a later
+  `build_payload(['Rust'])` + `interest_over_time()` skipped navigation and
+  returned Python's series under a `Rust` column. The init-time sign-in
+  navigation (`q=Python`) also pre-filled the cache, so the first call for any
+  other keyword returned Python's data. Captures are now tagged with a
+  signature (`("explore", keyword)`) and every data method re-navigates when
+  the signature or key does not match. Sync and async.
+- **`trending_analysis_*()` ignored their arguments once anything was cached.**
+  They shared the `related_topics`/`related_queries` keys with the keyword
+  methods, so `trending_analysis_merged(geo='RU', gprop='youtube')` followed by
+  `trending_analysis_topics(geo='KZ')` returned the RU/YouTube data labelled
+  KZ (and vice versa with `related_topics()`). Analysis captures now use the
+  signature `("analysis", timeframe, geo, hl, gprop)`.
+- **`requests_args` crashed with `TypeError`.** Passing the documented extra
+  kwargs (`timeout`, `cookies`, `params`, `headers`) collided with explicit
+  keyword arguments in `_get_data()` / `_get_google_cookie()`. Arguments are
+  now merged once, with user values taking precedence.
+- **`TrendsScraper.close()` could delete a user-supplied directory.** It
+  decided whether to `rmtree` the download dir by testing `'/tmp/'` in the
+  path, so `download_dir='/tmp/exports'` was wiped on exit while auto-created
+  temp dirs on macOS/Windows (`/var/folders/...`, `...\Temp`) leaked. It now
+  removes only a directory it created itself.
+- **Identifier-page email fallback (0.2.12) was unreachable.**
+  `_click_first_account()`'s last-resort "click the first `ul li`" matched
+  footer links on Google's email page and returned `True`, so `_fill_email()`
+  never ran and sign-in failed later with a misleading password error. The
+  helper now returns `False` when an identifier input is present. Sync and async.
+- **`import_profile()` destroyed the working profile on a bad archive.** The
+  existing profile was `rmtree`'d before the extracted content was validated.
+  Validation now happens first; an archive without a profile leaves the
+  current one untouched.
+- **`TrendsRSS.get_trends(geo='')` raised `IndexError`** instead of
+  `InvalidParameterError` (comprehension indexed `geo[0]` before the length
+  guard).
+- **SVG fallback produced year-1900 dates for short timeframes.** Time-only
+  x-axis labels (`'6:00 AM'`) were parsed as `1900-01-01`; the new
+  `_parse_axis_dates()` accepts only full-date labels, sorts them, and falls
+  back to `_timeframe_to_dates()` otherwise. Sync and async.
+- **`persistent_context=False` still required an on-disk profile** even though
+  `user_data_dir` is passed as `None` in that mode. The profile check now
+  applies only when `persistent_context=True`.
+- `today_searches()` is annotated and returns `pd.Series` on both paths;
+  `_parse_comparedgeo_response()` puts `geoCode` first, matching the HTTP path.
+
+### Added
+- **`google_email` in `setup_profile()`, `--email/-e` on the `auto-signin` CLI,
+  and `GOOGLE_ACC_EMAIL` env fallback**, so the identifier-page recovery
+  documented in 0.2.12 also works from the command line.
+- `auto-signin --headless` now fails fast when auto sign-in cannot complete
+  instead of blocking on `input()` waiting for a manual login.
+- `config.EXPLORE_URL` constant for the Explore page.
+
+### Changed
+- **JSONP prefix handling unified** in `utils.strip_jsonp_prefix()` (str or
+  bytes, regex over every `)]}'` / `)]}',` / whitespace variant). Replaces the
+  per-endpoint `trim_chars` counts in the HTTP path and the hand-rolled prefix
+  chains in both browser response handlers; the dead `_parse_api_response()`
+  (with its `")]},"` typo) is removed.
+- Browser captures replace fixed `time.sleep()` / `asyncio.sleep()` waits with
+  `_wait_for_cached_keys()`, which polls for the expected response keys via
+  `page.wait_for_timeout()` (5 s explore / 8 s analysis) and returns as soon
+  as they arrive. In sync mode this also lets Playwright dispatch response
+  events, which a plain `time.sleep()` blocked.
+- Async mid-run session recovery signs in on the current page
+  (`_sign_in_on_current_page()`) like the sync path, instead of navigating away
+  to `q=Python` first.
+- `__version__` now matches `pyproject.toml` (was left at 0.2.11).
+
 ## [0.2.12] - 2026-07-14
 
 ### Added

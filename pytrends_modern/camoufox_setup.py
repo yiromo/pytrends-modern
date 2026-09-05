@@ -52,6 +52,14 @@ def _resolve_google_password(config_password: Optional[str] = None) -> Optional[
     return config_password or os.environ.get("GOOGLE_ACC_PASSWORD")
 
 
+def _resolve_google_email(config_email: Optional[str] = None) -> Optional[str]:
+    """Resolve Google account email from config param or environment variable."""
+    return config_email or os.environ.get("GOOGLE_ACC_EMAIL")
+
+
+IDENTIFIER_INPUT_SELECTOR = '#identifierId, input[type="email"], input[name="identifier"]'
+
+
 def _find_sign_in_button(page) -> bool:
     """
     Check if a 'Sign in' link is present on the page.
@@ -129,6 +137,8 @@ def _click_first_account(page, timeout: float = 5.0) -> bool:
         pass
 
     try:
+        if page.locator(IDENTIFIER_INPUT_SELECTOR).count() > 0:
+            return False
         list_items = page.locator('ul li')
         if list_items.count() > 0:
             list_items.first.click()
@@ -351,6 +361,8 @@ async def _aclick_first_account(page, timeout: float = 5.0) -> bool:
         pass
 
     try:
+        if await page.locator(IDENTIFIER_INPUT_SELECTOR).count() > 0:
+            return False
         list_items = page.locator('ul li')
         if await list_items.count() > 0:
             await list_items.first.click()
@@ -486,6 +498,7 @@ def setup_profile(
     headless: bool = False,
     google_sign_in: bool = False,
     google_password: Optional[str] = None,
+    google_email: Optional[str] = None,
 ) -> bool:
     """
     Interactive setup: Open browser for user to log in to Google
@@ -495,6 +508,7 @@ def setup_profile(
         headless: Run in headless mode (not recommended for first setup)
         google_sign_in: Automatically sign in using provided password
         google_password: Google account password (falls back to GOOGLE_ACC_PASSWORD env var)
+        google_email: Account email for the identifier page (falls back to GOOGLE_ACC_EMAIL env var)
 
     Returns:
         True if setup completed successfully
@@ -581,10 +595,15 @@ def setup_profile(
 
             if google_sign_in and resolved_password:
                 try:
-                    auto_google_sign_in(page, resolved_password)
+                    auto_google_sign_in(
+                        page, resolved_password, email=_resolve_google_email(google_email)
+                    )
                     print("✅ Auto sign-in completed successfully")
                 except Exception as e:
                     print(f"❌ Auto sign-in failed: {e}")
+                    if headless:
+                        print("   Manual login is not possible in headless mode.")
+                        return False
                     print("   Falling back to manual login...")
                     google_sign_in = False
 
@@ -818,6 +837,10 @@ def import_profile(source_path: str, dest_dir: Optional[str] = None) -> bool:
             else:
                 src_root = tmp
 
+            if not is_profile_configured(src_root):
+                print("❌ Archive does not contain a Camoufox profile; existing profile left untouched")
+                return False
+
             # Replace, never merge: leftovers from a previous session (sqlite
             # -wal/-shm journals, locks) would survive a merge and clobber the
             # freshly imported databases on the next browser start.
@@ -893,6 +916,7 @@ if __name__ == "__main__":
 
     auto_parser = subparsers.add_parser("auto-signin", help="Auto sign-in with Google password")
     auto_parser.add_argument("--password", "-p", default=None, help="Google password (or set GOOGLE_ACC_PASSWORD env var)")
+    auto_parser.add_argument("--email", "-e", default=None, help="Google account email for the identifier page (or set GOOGLE_ACC_EMAIL env var)")
     auto_parser.add_argument("--headless", action="store_true", help="Run in headless mode")
 
     subparsers.add_parser("setup", help="Interactive manual setup")
@@ -922,6 +946,7 @@ if __name__ == "__main__":
         success = setup_profile(
             google_sign_in=True,
             google_password=password,
+            google_email=args.email,
             headless=args.headless,
         )
         sys.exit(0 if success else 1)

@@ -6,6 +6,7 @@ from typing import Dict
 
 # Base URL for Google Trends
 BASE_TRENDS_URL = "https://trends.google.com/trends"
+EXPLORE_URL = f"{BASE_TRENDS_URL}/explore"
 
 # API Endpoints
 GENERAL_URL = f"{BASE_TRENDS_URL}/api/explore"

@@ -5,6 +5,7 @@ Main Google Trends API request module
 import json
 import random
 import time
+from datetime import datetime
 from itertools import product
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 from urllib.parse import quote
@@ -16,6 +17,7 @@ from requests.packages.urllib3.util.retry import Retry
 
 from pytrends_modern import exceptions
 from pytrends_modern.browser_config_camoufox import BrowserConfig
+from pytrends_modern.utils import strip_jsonp_prefix
 from pytrends_modern.config import (
     BASE_TRENDS_URL,
     CATEGORIES_URL,
@@ -26,10 +28,10 @@ from pytrends_modern.config import (
     DEFAULT_TIMEOUT,
     DEFAULT_TZ,
     ERROR_CODES,
+    EXPLORE_URL,
     GENERAL_URL,
     INTEREST_BY_REGION_URL,
     INTEREST_OVER_TIME_URL,
-    MULTIRANGE_INTEREST_OVER_TIME_URL,
     REALTIME_TRENDING_SEARCHES_URL,
     RELATED_QUERIES_URL,
     SUGGESTIONS_URL,
@@ -61,6 +63,15 @@ class TrendReq:
 
     GET_METHOD = "get"
     POST_METHOD = "post"
+    _EXPLORE_CACHE_KEYS = (
+        "interest_over_time",
+        "interest_by_region",
+        "related_topics",
+        "related_queries",
+    )
+    _ANALYSIS_CACHE_KEYS = ("related_topics", "related_queries")
+    _EXPLORE_WAIT_SECONDS = 5.0
+    _ANALYSIS_WAIT_SECONDS = 8.0
 
     def __init__(
         self,
@@ -102,6 +113,7 @@ class TrendReq:
         self.browser_page = None
         self.browser_mode = browser_config is not None
         self.browser_responses_cache = {}  # Cache for captured API responses
+        self._browser_cache_key: Optional[Tuple[Any, ...]] = None
         
         if self.browser_mode:
             import warnings
@@ -226,7 +238,11 @@ class TrendReq:
         profile_ready = is_profile_configured(user_data_dir)
 
         google_sign_in_enabled = getattr(self.browser_config, 'google_sign_in', False)
-        if not profile_ready and not google_sign_in_enabled:
+        if (
+            not profile_ready
+            and not google_sign_in_enabled
+            and self.browser_config.persistent_context
+        ):
             raise exceptions.BrowserError(
                 f"Camoufox profile not configured at: {user_data_dir}\n"
                 "You must set up your Google account login first:\n\n"
@@ -287,6 +303,7 @@ class TrendReq:
 
             if not profile_ready and google_sign_in_enabled and self._google_password:
                 self._ensure_signed_in()
+                self.browser_responses_cache.clear()
             
         except exceptions.BrowserError:
             raise
@@ -323,7 +340,7 @@ class TrendReq:
 
         try:
             self.browser_page.goto(
-                "https://trends.google.com/trends/explore?q=Python&legacy&hl=en-GB",
+                f"{EXPLORE_URL}?q=Python&legacy&hl=en-GB",
                 wait_until='networkidle',
                 timeout=60000,
             )
@@ -355,17 +372,7 @@ class TrendReq:
             # Get response body
             body = response.body()
 
-            # Parse the response (remove Google's JSONP prefix
-            if body.startswith(b")]}',\n"):
-                body = body[6:]
-            elif body.startswith(b")]}',"):
-                body = body[5:]
-            elif body.startswith(b")]}'\n"):
-                body = body[5:]
-            elif body.startswith(b")]}'"):
-                body = body[4:]
-            
-            data = json.loads(body)
+            data = json.loads(strip_jsonp_prefix(body))
             
             # Cache by URL pattern
             if '/widgetdata/multiline' in url:
@@ -384,6 +391,40 @@ class TrendReq:
         except Exception:
             pass
     
+    def _browser_cache_valid(self, signature: Tuple[Any, ...], key: str) -> bool:
+        """
+        Check whether the response cache holds ``key`` for the given navigation
+
+        Args:
+            signature: Identity of the navigation that must have filled the cache
+            key: Cache key to look up
+
+        Returns:
+            True if the cache was populated by that navigation and has the key
+        """
+        return self._browser_cache_key == signature and bool(
+            self.browser_responses_cache.get(key)
+        )
+
+    def _wait_for_cached_keys(self, keys: Tuple[str, ...], timeout: float) -> bool:
+        """
+        Pump Playwright events until every key is cached or the deadline passes
+
+        Args:
+            keys: Cache keys to wait for
+            timeout: Maximum seconds to wait
+
+        Returns:
+            True if all keys arrived in time
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            if all(self.browser_responses_cache.get(k) for k in keys):
+                return True
+            if time.monotonic() >= deadline or not self.browser_page:
+                return False
+            self.browser_page.wait_for_timeout(250)
+
     def _capture_all_api_responses(self, keyword: str) -> None:
         """
         Navigate once and capture ALL API responses via network interception
@@ -399,6 +440,7 @@ class TrendReq:
         
         # Clear cache
         self.browser_responses_cache.clear()
+        self._browser_cache_key = ("explore", keyword)
         
         # Build URL
         import urllib.parse
@@ -413,11 +455,11 @@ class TrendReq:
         # Build URL with or without date parameter
         if timeframe == 'today 12-m':
             # Past 12 months - no date parameter needed
-            base_url = f"https://trends.google.com/trends/explore?q={encoded_keyword}"
+            base_url = f"{EXPLORE_URL}?q={encoded_keyword}"
         else:
             # Default: today 1-m or custom timeframe
             encoded_timeframe = urllib.parse.quote(timeframe)
-            base_url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}&q={encoded_keyword}"
+            base_url = f"{EXPLORE_URL}?date={encoded_timeframe}&q={encoded_keyword}"
         
         # Add YouTube property if enabled
         if youtube:
@@ -428,9 +470,7 @@ class TrendReq:
         
         try:
             self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-            
-            import time
-            time.sleep(2)
+            self._wait_for_cached_keys(self._EXPLORE_CACHE_KEYS, self._EXPLORE_WAIT_SECONDS)
 
             if getattr(self.browser_config, 'google_sign_in', False):
                 from pytrends_modern.camoufox_setup import _find_sign_in_button
@@ -441,10 +481,12 @@ class TrendReq:
                         self.browser_page, password,
                         email=getattr(self.browser_config, 'google_email', None),
                     )
-                    time.sleep(1)
+                    self.browser_page.wait_for_timeout(1000)
                     self.browser_responses_cache.clear()
                     self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-                    time.sleep(2)
+                    self._wait_for_cached_keys(
+                        self._EXPLORE_CACHE_KEYS, self._EXPLORE_WAIT_SECONDS
+                    )
             
         except Exception as e:
             if "Auto sign-in failed" in str(e):
@@ -473,10 +515,11 @@ class TrendReq:
 
         self._add_request_delay()
         self.browser_responses_cache.clear()
+        self._browser_cache_key = ("analysis", timeframe, geo, hl, gprop)
 
         import urllib.parse
         encoded_timeframe = urllib.parse.quote(timeframe)
-        url = f"https://trends.google.com/trends/explore?date={encoded_timeframe}"
+        url = f"{EXPLORE_URL}?date={encoded_timeframe}"
         if geo:
             url += f"&geo={geo}"
         if gprop:
@@ -485,14 +528,7 @@ class TrendReq:
 
         try:
             self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-            import time
-            time.sleep(3)
-
-            has_topics = bool(self.browser_responses_cache.get('related_topics'))
-            has_queries = bool(self.browser_responses_cache.get('related_queries'))
-
-            if not has_topics or not has_queries:
-                time.sleep(5)
+            self._wait_for_cached_keys(self._ANALYSIS_CACHE_KEYS, self._ANALYSIS_WAIT_SECONDS)
 
             if getattr(self.browser_config, 'google_sign_in', False):
                 from pytrends_modern.camoufox_setup import _find_sign_in_button
@@ -503,43 +539,18 @@ class TrendReq:
                         self.browser_page, password,
                         email=getattr(self.browser_config, 'google_email', None),
                     )
-                    time.sleep(1)
+                    self.browser_page.wait_for_timeout(1000)
                     self.browser_responses_cache.clear()
                     self.browser_page.goto(url, wait_until='networkidle', timeout=60000)
-                    time.sleep(5)
+                    self._wait_for_cached_keys(
+                        self._ANALYSIS_CACHE_KEYS, self._ANALYSIS_WAIT_SECONDS
+                    )
 
         except Exception as e:
             if "Auto sign-in failed" in str(e):
                 raise exceptions.BrowserError(str(e))
             raise exceptions.BrowserError(f"Failed to navigate to Google Trends analysis: {e}")
 
-    def _parse_api_response(self, response_text: str) -> Dict:
-        """
-        Parse API response from Google Trends
-        
-        Google's API responses may contain garbage prefix: ")]}',\n"
-        
-        Args:
-            response_text: Raw response text
-            
-        Returns:
-            Parsed JSON data
-        """
-        # Remove garbage prefix if present
-        if response_text.startswith(")]}',\n"):
-            response_text = response_text[6:]
-        elif response_text.startswith(")]}',"):
-            response_text = response_text[5:]
-        elif response_text.startswith(")]},"):
-            response_text = response_text[5:]
-        elif response_text.startswith(")]}'"):
-            response_text = response_text[4:]
-        
-        try:
-            return json.loads(response_text)
-        except json.JSONDecodeError as e:
-            raise exceptions.ResponseError(f"Failed to parse API response: {e}")
-    
     def _scrape_interest_over_time_from_svg(self) -> pd.DataFrame:
         """
         Scrape interest over time data from the SVG chart rendered in the browser.
@@ -589,44 +600,14 @@ class TrendReq:
                 if val:
                     text_values.append(val.strip().replace('\u202a', '').replace('\u202c', ''))
 
-            x_dates = []
-            for val in text_values:
-                try:
-                    dt = datetime.strptime(val, '%b %d, %Y')
-                    x_dates.append(dt)
-                    continue
-                except ValueError:
-                    pass
-                try:
-                    dt = datetime.strptime(val, '%B %d, %Y')
-                    x_dates.append(dt)
-                    continue
-                except ValueError:
-                    pass
-                try:
-                    dt = datetime.strptime(val, '%Y-%m-%d')
-                    x_dates.append(dt)
-                    continue
-                except ValueError:
-                    pass
-                try:
-                    dt = datetime.strptime(val, '%I:%M %p')
-                    x_dates.append(dt)
-                    continue
-                except ValueError:
-                    pass
+            x_dates = self._parse_axis_dates(text_values)
 
             if len(x_dates) < 2:
                 timeframe = getattr(self.browser_config, 'timeframe', 'today 1-m')
-                now = datetime.now()
-                x_dates = self._timeframe_to_dates(timeframe, now)
+                x_dates = self._timeframe_to_dates(timeframe, datetime.now())
 
-            if len(x_dates) >= 2:
-                date_start = x_dates[0]
-                date_end = x_dates[-1]
-            else:
-                date_start = datetime.now() - timedelta(days=30)
-                date_end = datetime.now()
+            date_start = x_dates[0]
+            date_end = x_dates[-1]
 
             total_span = (date_end - date_start).total_seconds()
             keyword = self.kw_list[0] if self.kw_list else 'keyword'
@@ -654,8 +635,28 @@ class TrendReq:
         except Exception as e:
             raise exceptions.ResponseError(f"Failed to scrape SVG chart: {e}")
 
+    _AXIS_DATE_FORMATS = ('%b %d, %Y', '%B %d, %Y', '%Y-%m-%d')
+
+    @classmethod
+    def _parse_axis_dates(cls, labels: List[str]) -> List[datetime]:
+        """
+        Parse full-date x-axis labels from the SVG chart
+
+        Time-only labels are deliberately not parsed: strptime would place
+        them in 1900 and the caller then falls back to the configured timeframe.
+        """
+        parsed: List[datetime] = []
+        for val in labels:
+            for fmt in cls._AXIS_DATE_FORMATS:
+                try:
+                    parsed.append(datetime.strptime(val, fmt))
+                    break
+                except ValueError:
+                    continue
+        return sorted(parsed)
+
     @staticmethod
-    def _timeframe_to_dates(timeframe: str, now) -> list:
+    def _timeframe_to_dates(timeframe: str, now: datetime) -> List[datetime]:
         """Convert a Google Trends timeframe string to [start, end] datetime list."""
         from datetime import timedelta
 
@@ -751,14 +752,14 @@ class TrendReq:
                 lambda x: pd.Series(str(x).replace("[", "").replace("]", "").split(","))
             )
             
+            # Add geo code if requested
+            if inc_geo_code and geo_column in df.columns:
+                result_df[geo_column] = df[geo_column]
+            
             # Name columns with keywords
             for idx, kw in enumerate(self.kw_list):
                 result_df.insert(len(result_df.columns), kw, result_df[idx].astype("int"))
                 del result_df[idx]
-            
-            # Add geo code if requested
-            if inc_geo_code and geo_column in df.columns:
-                result_df[geo_column] = df[geo_column]
             
             return result_df
             
@@ -826,6 +827,9 @@ class TrendReq:
             try:
                 # Build request kwargs
                 kwargs = dict(self.requests_args)
+                kwargs.setdefault("timeout", self.timeout)
+                headers = {"User-Agent": self._get_user_agent()}
+                headers.update(kwargs.pop("headers", None) or {})
 
                 # Handle proxies
                 if self.proxies and len(self.proxies) > 0:
@@ -835,8 +839,7 @@ class TrendReq:
                 # Make request
                 response = requests.get(
                     f"{BASE_TRENDS_URL}/?geo={self.hl[-2:]}",
-                    timeout=self.timeout,
-                    headers={"User-Agent": self._get_user_agent()},
+                    headers=headers,
                     **kwargs,
                 )
 
@@ -871,7 +874,7 @@ class TrendReq:
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
 
     def _get_data(
-        self, url: str, method: str = GET_METHOD, trim_chars: int = 0, **kwargs: Any
+        self, url: str, method: str = GET_METHOD, **kwargs: Any
     ) -> Dict[str, Any]:
         """
         Send request to Google Trends and return JSON response
@@ -879,7 +882,6 @@ class TrendReq:
         Args:
             url: Target URL
             method: HTTP method ('get' or 'post')
-            trim_chars: Number of characters to trim from response start
             **kwargs: Additional arguments for request
 
         Returns:
@@ -914,16 +916,16 @@ class TrendReq:
             self.cookies = self._get_google_cookie()
             session.proxies.update({"https": self.proxies[self.proxy_index]})
 
+        request_kwargs: Dict[str, Any] = {**self.requests_args, **kwargs}
+        request_kwargs.setdefault("timeout", self.timeout)
+        request_kwargs.setdefault("cookies", self.cookies)
+
         # Make request
         try:
             if method == self.POST_METHOD:
-                response = session.post(
-                    url, timeout=self.timeout, cookies=self.cookies, **kwargs, **self.requests_args
-                )
+                response = session.post(url, **request_kwargs)
             else:
-                response = session.get(
-                    url, timeout=self.timeout, cookies=self.cookies, **kwargs, **self.requests_args
-                )
+                response = session.get(url, **request_kwargs)
         except requests.exceptions.RequestException as e:
             raise exceptions.ResponseError(f"Request failed: {str(e)}")
 
@@ -937,8 +939,7 @@ class TrendReq:
             t in content_type
             for t in ["application/json", "application/javascript", "text/javascript"]
         ):
-            # Trim garbage characters and parse JSON
-            content = response.text[trim_chars:]
+            content = strip_jsonp_prefix(response.text)
             try:
                 data = json.loads(content)
                 self._get_new_proxy()  # Rotate proxy on success
@@ -1027,7 +1028,6 @@ class TrendReq:
             url=GENERAL_URL,
             method=self.POST_METHOD,
             params=self.token_payload,
-            trim_chars=4,
         )["widgets"]
 
         # Clear previous widget lists
@@ -1072,8 +1072,8 @@ class TrendReq:
             
             keyword = self.kw_list[0]
             
-            # Capture all responses if not already cached
-            if not self.browser_responses_cache:
+            # Capture all responses if not already cached for this keyword
+            if not self._browser_cache_valid(("explore", keyword), 'interest_over_time'):
                 self._capture_all_api_responses(keyword)
             
             # Get cached response
@@ -1106,7 +1106,6 @@ class TrendReq:
         req_json = self._get_data(
             url=INTEREST_OVER_TIME_URL,
             method=self.GET_METHOD,
-            trim_chars=5,
             params=payload,
         )
 
@@ -1184,8 +1183,8 @@ class TrendReq:
             
             keyword = self.kw_list[0]
             
-            # Capture all responses if not already cached
-            if not self.browser_responses_cache:
+            # Capture all responses if not already cached for this keyword
+            if not self._browser_cache_valid(("explore", keyword), 'interest_by_region'):
                 self._capture_all_api_responses(keyword)
             
             # Get cached response
@@ -1219,7 +1218,6 @@ class TrendReq:
         req_json = self._get_data(
             url=INTEREST_BY_REGION_URL,
             method=self.GET_METHOD,
-            trim_chars=5,
             params=payload,
         )
 
@@ -1273,8 +1271,8 @@ class TrendReq:
             
             keyword = self.kw_list[0]
             
-            # Capture all responses if not already cached
-            if not self.browser_responses_cache:
+            # Capture all responses if not already cached for this keyword
+            if not self._browser_cache_valid(("explore", keyword), 'related_topics'):
                 self._capture_all_api_responses(keyword)
             
             # Get cached response
@@ -1313,7 +1311,6 @@ class TrendReq:
             req_json = self._get_data(
                 url=RELATED_QUERIES_URL,
                 method=self.GET_METHOD,
-                trim_chars=5,
                 params=payload,
             )
 
@@ -1358,8 +1355,8 @@ class TrendReq:
             
             keyword = self.kw_list[0]
             
-            # Capture all responses if not already cached
-            if not self.browser_responses_cache:
+            # Capture all responses if not already cached for this keyword
+            if not self._browser_cache_valid(("explore", keyword), 'related_queries'):
                 self._capture_all_api_responses(keyword)
             
             # Get cached response
@@ -1398,7 +1395,6 @@ class TrendReq:
             req_json = self._get_data(
                 url=RELATED_QUERIES_URL,
                 method=self.GET_METHOD,
-                trim_chars=5,
                 params=payload,
             )
 
@@ -1444,7 +1440,7 @@ class TrendReq:
 
         return pd.DataFrame(req_json[pn])
 
-    def today_searches(self, pn: str = "US") -> pd.DataFrame:
+    def today_searches(self, pn: str = "US") -> pd.Series:
         """
         Get today's trending searches (Daily Trends)
 
@@ -1452,7 +1448,7 @@ class TrendReq:
             pn: Country code (e.g., 'US', 'GB')
 
         Returns:
-            DataFrame of today's trending searches
+            Series of today's trending search titles
 
         Example:
             >>> pytrends = TrendReq()
@@ -1464,16 +1460,14 @@ class TrendReq:
         req_json = self._get_data(
             url=TODAY_SEARCHES_URL,
             method=self.GET_METHOD,
-            trim_chars=5,
             params=params,
         )
 
         try:
             trends = req_json["default"]["trendingSearchesDays"][0]["trendingSearches"]
-            result_df = pd.DataFrame([trend["title"] for trend in trends])
-            return result_df.iloc[:, -1]
+            return pd.Series([trend["title"] for trend in trends], dtype=object)
         except (KeyError, IndexError):
-            return pd.DataFrame()
+            return pd.Series(dtype=object)
 
     def realtime_trending_searches(
         self, pn: str = "US", cat: str = "all", count: int = 300
@@ -1509,7 +1503,6 @@ class TrendReq:
         req_json = self._get_data(
             url=REALTIME_TRENDING_SEARCHES_URL,
             method=self.GET_METHOD,
-            trim_chars=5,
             params=params,
         )
 
@@ -1557,7 +1550,6 @@ class TrendReq:
         req_json = self._get_data(
             url=TOP_CHARTS_URL,
             method=self.GET_METHOD,
-            trim_chars=5,
             params=params,
         )
 
@@ -1589,7 +1581,6 @@ class TrendReq:
             url=SUGGESTIONS_URL + kw_param,
             params=params,
             method=self.GET_METHOD,
-            trim_chars=5,
         )
 
         return req_json.get("default", {}).get("topics", [])
@@ -1612,7 +1603,6 @@ class TrendReq:
             url=CATEGORIES_URL,
             params=params,
             method=self.GET_METHOD,
-            trim_chars=5,
         )
 
     def trending_analysis_topics(
@@ -1653,7 +1643,8 @@ class TrendReq:
                 "Pass BrowserConfig to TrendReq()."
             )
 
-        if not self.browser_responses_cache.get('related_topics'):
+        signature = ("analysis", timeframe, geo, hl, gprop)
+        if not self._browser_cache_valid(signature, 'related_topics'):
             self._capture_analysis_responses(timeframe, geo, hl, gprop)
 
         response_data = self.browser_responses_cache.get('related_topics')
@@ -1707,7 +1698,8 @@ class TrendReq:
                 "Pass BrowserConfig to TrendReq()."
             )
 
-        if not self.browser_responses_cache.get('related_queries'):
+        signature = ("analysis", timeframe, geo, hl, gprop)
+        if not self._browser_cache_valid(signature, 'related_queries'):
             self._capture_analysis_responses(timeframe, geo, hl, gprop)
 
         response_data = self.browser_responses_cache.get('related_queries')
@@ -1761,8 +1753,9 @@ class TrendReq:
                 "Pass BrowserConfig to TrendReq()."
             )
 
-        has_topics = bool(self.browser_responses_cache.get('related_topics'))
-        has_queries = bool(self.browser_responses_cache.get('related_queries'))
+        signature = ("analysis", timeframe, geo, hl, gprop)
+        has_topics = self._browser_cache_valid(signature, 'related_topics')
+        has_queries = self._browser_cache_valid(signature, 'related_queries')
 
         if not has_topics or not has_queries:
             self._capture_analysis_responses(timeframe, geo, hl, gprop)
